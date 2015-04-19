@@ -30,3 +30,7 @@
 
 # Debug files
 *.dSYM/
+/Debug-Windows/
+/Debug-Linux/
+/openWRT/
+/src/.deps
