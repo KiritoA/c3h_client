@@ -1,7 +1,9 @@
 c3h-client
 ===========
 该项目代码源于以下项目：
+
 njit8021xclient:https://github.com/liuqun/njit8021xclient
+
 以及bitdust的fork:https://github.com/bitdust/njit8021xclient
 
 
@@ -17,11 +19,12 @@ njit8021xclient:https://github.com/liuqun/njit8021xclient
 
 依赖的开发包
 --------
-* libpcap
+* Linux/openWRT: libpcap
+* Windows: WinPcap(WpdPack)
 
-日志
+测试日志
 -----
-* 2015-4-19：可以成功认证，但校园网在心跳包加入了检测，目前每7分钟会断线一次，之后可重新连接不会被拉黑
+* 2015-4-19：佛大校园网可成功认证，但校园网在心跳包加入了检测，目前每7分钟会断线一次，之后可重新连接不会被拉黑
 
 用法
 -----

@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <assert.h>
 
 #include <pcap.h>
@@ -36,7 +37,7 @@
 #include <arpa/inet.h>
 #endif
 
-void GetIpFromDevice(uint8_t ip[4], const char *deviceName)
+int GetIpFromDevice(uint8_t ip[4], const char *deviceName)
 {
 #ifdef WIN32
 	pcap_if_t *alldevs;
@@ -46,7 +47,7 @@ void GetIpFromDevice(uint8_t ip[4], const char *deviceName)
 	char errbuf[PCAP_ERRBUF_SIZE];
 	if (pcap_findalldevs(&alldevs, errbuf) == -1) {
 		fprintf(stderr, "Error in pcap_findalldevs: %s\n", errbuf);
-		//exit(1);
+		return 1;
 	}
 	for (dev = alldevs; dev != NULL; dev = dev->next) {
 		if (strcmp(dev->name, deviceName) == 0)
@@ -62,17 +63,19 @@ void GetIpFromDevice(uint8_t ip[4], const char *deviceName)
 	}
 
 	pcap_freealldevs(alldevs);
+
+	return 0;
 #else
 
 	int fd;
 	struct ifreq ifr;
 
-	assert(strlen(DeviceName) <= IFNAMSIZ);
+	assert(strlen(deviceName) <= IFNAMSIZ);
 
 	fd = socket(AF_INET, SOCK_DGRAM, 0);
 	assert(fd>0);
 
-	strncpy(ifr.ifr_name, DeviceName, IFNAMSIZ);
+	strncpy(ifr.ifr_name, deviceName, IFNAMSIZ);
 	ifr.ifr_addr.sa_family = AF_INET;
 	if (ioctl(fd, SIOCGIFADDR, &ifr) == 0)
 	{
@@ -86,11 +89,11 @@ void GetIpFromDevice(uint8_t ip[4], const char *deviceName)
 	}
 
 	close(fd);
-	return;
+	return 0;
 #endif
 }
 
-void GetMacFromDevice(uint8_t mac[6], const char *deviceName)
+int GetMacFromDevice(uint8_t mac[6], const char *deviceName)
 {
 #ifdef WIN32
 
@@ -99,12 +102,27 @@ void GetMacFromDevice(uint8_t mac[6], const char *deviceName)
 	DWORD dwRetVal = 0;
 	UINT i;
 
+	if (strlen(deviceName) <= 12)
+		return 1;
+
 	ULONG ulOutBufLen = sizeof(IP_ADAPTER_INFO);
 	pAdapterInfo = (IP_ADAPTER_INFO *)MALLOC(sizeof(IP_ADAPTER_INFO));
+	if (pAdapterInfo == NULL) {
+		return 1;
+	}
+	// Make an initial call to GetAdaptersInfo to get
+	// the necessary size into the ulOutBufLen variable
+	if (GetAdaptersInfo(pAdapterInfo, &ulOutBufLen) == ERROR_BUFFER_OVERFLOW) {
+		FREE(pAdapterInfo);
+		pAdapterInfo = (IP_ADAPTER_INFO *)MALLOC(ulOutBufLen);
+		if (pAdapterInfo == NULL) {
+			return 1;
+		}
+	}
 	if ((dwRetVal = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen)) == NO_ERROR) {
 		pAdapter = pAdapterInfo;
 		while (pAdapter) {
-			if (memcmp(deviceName + 4, pAdapter->AdapterName, strlen(pAdapter->AdapterName) == 0))
+			if (strcmp(deviceName + 12, pAdapter->AdapterName) == 0)
 			{
 				for (i = 0; i < 6; i++) {
 					mac[i] = pAdapter->Address[i];
@@ -119,6 +137,8 @@ void GetMacFromDevice(uint8_t mac[6], const char *deviceName)
 
 	if (pAdapterInfo)
 		FREE(pAdapterInfo);
+
+	return 0;
 #else
 	int fd;
 	int err;
@@ -127,8 +147,8 @@ void GetMacFromDevice(uint8_t mac[6], const char *deviceName)
 	fd = socket(PF_PACKET, SOCK_RAW, htons(0x0806));
 	assert(fd != -1);
 
-	assert(strlen(devicename) < IFNAMSIZ);
-	strncpy(ifr.ifr_name, devicename, IFNAMSIZ);
+	assert(strlen(deviceName) < IFNAMSIZ);
+	strncpy(ifr.ifr_name, deviceName, IFNAMSIZ);
 	ifr.ifr_addr.sa_family = AF_INET;
 
 	err = ioctl(fd, SIOCGIFHWADDR, &ifr);
@@ -137,6 +157,7 @@ void GetMacFromDevice(uint8_t mac[6], const char *deviceName)
 
 	err = close(fd);
 	assert(err != -1);
+	return err;
 #endif
 }
 
@@ -163,4 +184,15 @@ void ListAllAdapters()
 		}
 	}
 	pcap_freealldevs(alldevs);
+}
+
+void RefreshIPAddress()
+{
+#ifdef WIN32
+
+	system("ipconfig /renew");
+#else
+
+	system("njit-RefreshIP");
+#endif
 }

@@ -35,7 +35,7 @@
 #include "adapter.h"
 
 // 子函数声明
-void HandleH3CRequest(enum EAP_Type type, const uint8_t request[]);
+void HandleH3CRequest(int type, const uint8_t request[]);
 static void SendStartPkt(pcap_t *adhandle, const uint8_t mac[], bool broadcast);
 static void SendLogOffPkt(pcap_t *adhandle, const uint8_t mac[]);
 static void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[],
@@ -119,7 +119,7 @@ void InitDevice(const char *DeviceName)
 		fprintf(stderr, "%s\n", errbuf);
 		exit(-1);
 	}
-
+	deviceName = DeviceName;
 	/* 查询本机MAC地址 */
 	GetMacFromDevice(MAC, DeviceName);
 
@@ -148,7 +148,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 		int retry=0;
 		/* 主动发起认证会话 */
 		SendStartPkt(adhandle, MAC, false);
-		fprintf(stdout, "[INFO] C3H Client: Connecting to server ...\n");
+		fprintf(stdout, "[INFO] C3H Client: Connecting to the network ...\n");
 
 		/* 等待认证服务器的回应 */
 		bool serverFound = false;
@@ -183,7 +183,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 		// 收到的第一个包可能是Request Notification。取决于校方网络配置
 		if ((EAP_Type) captured[22] == NOTIFICATION)
 		{
-			fprintf(stdout,  "[INFO] C3H Client: Server responded\n", captured[19]);
+			fprintf(stdout,  "[INFO] C3H Client: Server responded\n");
 			// 发送Response Notification
 			SendResponseNotification(adhandle, captured, ethhdr);
 			DPRINTF("[%d]H3C Client: Response Notification.\n", captured[19]);
@@ -198,7 +198,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 		if ((EAP_Type) captured[22] == IDENTITY)
 		{
 			// 通常情况会收到包Request Identity，应回答Response Identity
-			fprintf(stdout, "[INFO] C3H Client: Verify user\n", captured[19]);
+			fprintf(stdout, "[INFO] C3H Client: Beginning authentication\n");
 			GetIpFromDevice(ip, DeviceName);
 			SendResponseIdentity(adhandle, captured, ethhdr, ip, UserName, false);
 			DPRINTF("[%d]Client: Response Identity.\n", (EAP_ID )captured[19]);
@@ -207,7 +207,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 		{	// 遇到AVAILABLE包时需要特殊处理
 			// 中南财经政法大学目前使用的格式：
 			// 收到第一个Request AVAILABLE时要回答Response Identity
-			fprintf(stdout, "[%d]C3H Client: Verify user\n", captured[19]);
+			fprintf(stdout, "[%d]C3H Client: Beginning authentication\n", captured[19]);
 			GetIpFromDevice(ip, DeviceName);
 			SendResponseIdentity(adhandle, captured, ethhdr, ip, UserName, false);
 			DPRINTF("[%d]Client: Response Identity.\n", (EAP_ID)captured[19]);
@@ -244,7 +244,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 				uint8_t errtype = captured[22];
 				uint8_t msgsize = captured[23];
 				const char *msg = (const char*) &captured[24];
-				fprintf(stderr, "[ERROR] C3H Client: Failure.\n", (EAP_ID)captured[19]);
+				fprintf(stderr, "[ERROR] C3H Client: Failure.\n");
 				if (errtype == 0x09 && msgsize > 0)
 				{	// 输出错误提示消息
 					fprintf(stderr, "%s\n", msg);
@@ -271,9 +271,12 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 			else if ((EAP_Code) captured[18] == SUCCESS)
 			{
 				connected = true;
-				fprintf(stdout, "[INFO] C3H Client: Connected to server\n", captured[19]);
+				fprintf(stdout, "[INFO] C3H Client: You have passed the identity authentication\n");
 				// 刷新IP地址
-				system("njit-RefreshIP");
+				fprintf(stdout, "[INFO] C3H Client: Obtaining IP address...\n");
+				RefreshIPAddress();
+				//GetIpFromDevice(ip, DeviceName);
+				//fprintf(stdout, "[INFO] C3H Client: Current IP address is %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
 			}
 			else if ((EAP_Code)captured[18] == H3CDATA)
 			{
@@ -303,7 +306,7 @@ void LogOff()
 	}
 }
 
-void HandleH3CRequest(enum EAP_Type type, const uint8_t request[])
+void HandleH3CRequest(int type, const uint8_t request[])
 {
 	switch (type)
 	{
@@ -396,11 +399,8 @@ void SendLogOffPkt(pcap_t *handle, const uint8_t localmac[])
 {
 	uint8_t packet[18];
 
-	// Ethernet Header (14 Bytes)
-	memcpy(packet, MultcastAddr, 6);
-	memcpy(packet + 6, localmac, 6);
-	packet[12] = 0x88;
-	packet[13] = 0x8e;
+	// Fill Ethernet header
+	memcpy(packet, ethhdr, 14);
 
 	// EAPOL (4 Bytes)
 	packet[14] = 0x01;	// Version=1
