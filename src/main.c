@@ -2,7 +2,6 @@
  * Filename:     main.c
  *
  * Created by:	 liuqun
- * Revised:      2015年4月19日
  * Revised by:   KiritoA
  * Description:  校园网802.1X客户端命令行
  *
@@ -16,6 +15,7 @@
 #include <unistd.h>
 #endif
 
+#include "debug.h"
 #include "auth.h"
 #include "adapter.h"
 
@@ -37,19 +37,19 @@ int main(int argc, char *argv[])
 #ifndef WIN32
 	/* 检查当前是否具有root权限 */
 	if (getuid() != 0) {
-		fprintf(stderr, "抱歉，运行本客户端程序需要root权限\n");
-		fprintf(stderr, "(RedHat/Fedora下使用su命令切换为root)\n");
-		fprintf(stderr, "(Ubuntu/Debian下在命令前添加sudo)\n");
+		PRINTMSG( "抱歉，运行本客户端程序需要root权限\n");
+		PRINTMSG( "(RedHat/Fedora下使用su命令切换为root)\n");
+		PRINTMSG( "(Ubuntu/Debian下在命令前添加sudo)\n");
 		exit(-1);
 	}
 	/* 检查命令行参数格式 */
 	if (argc<3 || argc>4) {
-		fprintf(stderr, "命令行参数错误！\n");
-		fprintf(stderr,	"正确的调用格式例子如下：\n");
-		fprintf(stderr,	"    %s username password\n", argv[0]);
-		fprintf(stderr,	"    %s username password eth0\n", argv[0]);
-		fprintf(stderr,	"    %s username password eth1\n", argv[0]);
-		fprintf(stderr, "(注：若不指明网卡，默认情况下将使用eth0)\n");
+		PRINTMSG("命令行参数错误！\n");
+		PRINTMSG("Usage:\n");
+		PRINTMSG("c3h-client username password\n");
+		PRINTMSG("c3h-client username password eth0\n");
+		PRINTMSG("c3h-client username password eth1\n");
+		PRINTMSG("(注：若不指明网卡，默认情况下将使用eth0)\n");
 		exit(-1);
 	} else if (argc == 4) {
 		DeviceName = argv[3]; // 允许从命令行指定设备名
@@ -59,8 +59,8 @@ int main(int argc, char *argv[])
 #else
 	/* 检查命令行参数格式 */
 	if (argc != 4) {
-		fprintf(stderr, "Usage:\n");
-		fprintf(stderr, "c3h-client [username] [password] [adapter]\n\n", argv[0]);
+		PRINTMSG( "Usage:\n");
+		PRINTMSG( "c3h-client [username] [password] [adapter]\n\n");
 		ListAllAdapters();
 		exit(-1);
 	}

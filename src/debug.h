@@ -1,13 +1,17 @@
 ﻿/*
  * Filename:     debug.h
  *
+ * Created by:	 liuqun
+ * Revised by:   KiritoA
  * Description:  定义少量用于调试的宏函数
  *
  */
 
 #ifndef DEBUG_H
 #define DEBUG_H
-#define NDEBUG
+
+#	include <stdio.h>	// 导入函数原型fprintf(stderr,"%format",...)
+
 /**
  * Macro: DPRINTF()
  *
@@ -27,10 +31,12 @@
  *
  */
 #ifdef NDEBUG
-#	define DPRINTF(...)
+#	define PRINTDEBUG(...)
 #else
-#	include <stdio.h>	// 导入函数原型fprintf(stderr,"%format",...)
-#	define DPRINTF(...)	fprintf(stderr, __VA_ARGS__)
+#	define PRINTDEBUG(...)	fprintf(stderr, __VA_ARGS__)
 #endif
+
+#define PRINTMSG(...) fprintf(stderr, __VA_ARGS__)
+#define PRINTERR(...) fprintf(stderr, __VA_ARGS__)
 
 #endif // DEBUG_H

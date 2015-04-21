@@ -2,7 +2,6 @@
  * Filename:     auth.c
  *
  * Created by:	 liuqun
- * Revised:      2015年4月19日
  * Revised by:   KiritoA
  * Description:  801.1X认证核心函数
  *
@@ -35,12 +34,13 @@
 #include "adapter.h"
 
 // 子函数声明
-void HandleH3CRequest(int type, const uint8_t request[]);
+static void HandleH3CRequest(int type, const uint8_t request[]);
 static void SendStartPkt(pcap_t *adhandle, const uint8_t mac[], bool broadcast);
 static void SendLogOffPkt(pcap_t *adhandle, const uint8_t mac[]);
 static void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[],
 		const uint8_t ethhdr[], const uint8_t ip[4], const char username[],
 		bool connected);
+
 static void SendResponseMD5(pcap_t *adhandle, const uint8_t request[],
 		const uint8_t ethhdr[], const char username[], const char passwd[]);
 static void SendResponseSecurity(pcap_t *adhandle, const uint8_t request[],
@@ -48,13 +48,11 @@ static void SendResponseSecurity(pcap_t *adhandle, const uint8_t request[],
 static void SendResponseNotification(pcap_t *handle, const uint8_t request[],
 		const uint8_t ethhdr[]);
 
-
 static void FillZero(uint8_t *data, uint32_t len);
 static void FillClientVersionArea(uint8_t area[]);
 //static void FillWindowsVersionArea(uint8_t area[]);
 static void FillBase64Area(char area[]);
-
-void FillMD5Area(uint8_t digest[], uint8_t id, const char passwd[],
+static void FillMD5Area(uint8_t digest[], uint8_t id, const char passwd[],
 		const uint8_t srcMD5[]);
 
 
@@ -116,7 +114,7 @@ void InitDevice(const char *DeviceName)
 	adhandle = pcap_open_live(DeviceName, 65536, 1, DefaultTimeout, errbuf);
 	if (adhandle == NULL)
 	{
-		fprintf(stderr, "%s\n", errbuf);
+		PRINTERR("%s\n", errbuf);
 		exit(-1);
 	}
 	deviceName = DeviceName;
@@ -148,7 +146,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 		int retry=0;
 		/* 主动发起认证会话 */
 		SendStartPkt(adhandle, MAC, false);
-		fprintf(stdout, "[INFO] C3H Client: Connecting to the network ...\n");
+		PRINTMSG( "[INFO] C3H Client: Connecting to the network ...\n");
 
 		/* 等待认证服务器的回应 */
 		bool serverFound = false;
@@ -162,12 +160,12 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 				//重试达到最大次数后退出
 				if(++retry == 5)
 				{
-					fprintf(stderr, "[ERROR] C3H Client: Server did not respond\n");
+					PRINTERR("[ERROR] C3H Client: Server did not respond\n");
 					return -1;
 				}
 				// 延时后重试
 				sleep(2);
-				DPRINTF(".");
+				PRINTDEBUG(".");
 				SendStartPkt(adhandle, MAC, false);
 				// NOTE: 这里没有检查网线是否接触不良或已被拔下
 			}
@@ -183,10 +181,10 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 		// 收到的第一个包可能是Request Notification。取决于校方网络配置
 		if ((EAP_Type) captured[22] == NOTIFICATION)
 		{
-			fprintf(stdout,  "[INFO] C3H Client: Server responded\n");
+			PRINTMSG(  "[INFO] C3H Client: Server responded\n");
 			// 发送Response Notification
 			SendResponseNotification(adhandle, captured, ethhdr);
-			DPRINTF("[%d]H3C Client: Response Notification.\n", captured[19]);
+			PRINTDEBUG("[%d]H3C Client: Response Notification.\n", captured[19]);
 			sleep(2);
 			// 继续接收下一个Request包
 			retcode = pcap_next_ex(adhandle, &header, &captured);
@@ -198,19 +196,19 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 		if ((EAP_Type) captured[22] == IDENTITY)
 		{
 			// 通常情况会收到包Request Identity，应回答Response Identity
-			fprintf(stdout, "[INFO] C3H Client: Beginning authentication\n");
+			PRINTMSG( "[INFO] C3H Client: Beginning authentication... [%s]\n", username);
 			GetIpFromDevice(ip, DeviceName);
 			SendResponseIdentity(adhandle, captured, ethhdr, ip, UserName, false);
-			DPRINTF("[%d]Client: Response Identity.\n", (EAP_ID )captured[19]);
+			PRINTDEBUG("[%d]Client: Response Identity.\n", (EAP_ID )captured[19]);
 		}
 		else if ((EAP_Type)captured[22] == SECURITY)
 		{	// 遇到AVAILABLE包时需要特殊处理
 			// 中南财经政法大学目前使用的格式：
 			// 收到第一个Request AVAILABLE时要回答Response Identity
-			fprintf(stdout, "[%d]C3H Client: Beginning authentication\n", captured[19]);
+			PRINTMSG( "[INFO] C3H Client: Beginning authentication... [%s]\n", username);
 			GetIpFromDevice(ip, DeviceName);
 			SendResponseIdentity(adhandle, captured, ethhdr, ip, UserName, false);
-			DPRINTF("[%d]Client: Response Identity.\n", (EAP_ID)captured[19]);
+			PRINTDEBUG("[%d]Client: Response Identity.\n", (EAP_ID)captured[19]);
 		}
 
 		// 重设过滤器，只捕获华为802.1X认证设备发来的包（包括多播Request Identity / Request AVAILABLE）
@@ -227,7 +225,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 			// 调用pcap_next_ex()函数捕获数据包
 			while (pcap_next_ex(adhandle, &header, &captured) != 1)
 			{
-				//DPRINTF("."); // 若捕获失败，则等1秒后重试
+				//PRINTDEBUG("."); // 若捕获失败，则等1秒后重试
 				//sleep(1);     // 直到成功捕获到一个数据包后再跳出
 				// NOTE: 这里没有检查网线是否已被拔下或插口接触不良
 			}
@@ -244,10 +242,10 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 				uint8_t errtype = captured[22];
 				uint8_t msgsize = captured[23];
 				const char *msg = (const char*) &captured[24];
-				fprintf(stderr, "[ERROR] C3H Client: Failure.\n");
+				PRINTERR("[ERROR] C3H Client: Failure.\n");
 				if (errtype == 0x09 && msgsize > 0)
 				{	// 输出错误提示消息
-					fprintf(stderr, "%s\n", msg);
+					PRINTERR("%s\n", msg);
 					// 已知的几种错误如下
 					// E2531:用户名不存在
 					// E2535:Service is paused
@@ -264,28 +262,28 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 				}
 				else
 				{
-					DPRINTF("errtype=0x%02x\n", errtype);
+					PRINTDEBUG("errtype=0x%02x\n", errtype);
 					exit(-1);
 				}
 			}
 			else if ((EAP_Code) captured[18] == SUCCESS)
 			{
 				connected = true;
-				fprintf(stdout, "[INFO] C3H Client: You have passed the identity authentication\n");
+				PRINTMSG( "[INFO] C3H Client: You have passed the identity authentication\n");
 				// 刷新IP地址
-				fprintf(stdout, "[INFO] C3H Client: Obtaining IP address...\n");
+				PRINTMSG( "[INFO] C3H Client: Obtaining IP address...\n");
 				RefreshIPAddress();
-				//GetIpFromDevice(ip, DeviceName);
-				//fprintf(stdout, "[INFO] C3H Client: Current IP address is %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
+				GetIpFromDevice(ip, DeviceName);
+				PRINTMSG( "[INFO] C3H Client: Current IP address is %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
 			}
 			else if ((EAP_Code)captured[18] == H3CDATA)
 			{
-				fprintf(stdout, "[%d] Server: (H3C data)\n", captured[19]);
+				PRINTMSG( "[%d] Server: (H3C data)\n", captured[19]);
 				// TODO: 需要解出华为自定义数据包内容，该部分内容与心跳包数据有关
 			}
 			else
 			{
-				DPRINTF("[%d] H3C:Unknown Code:%d\n", captured[18]);
+				PRINTDEBUG("[%d] H3C:Unknown EAP code:%d\n", captured[19], captured[18]);
 			}
 		}
 	}
@@ -298,69 +296,69 @@ void LogOff()
 	{
 		SendLogOffPkt(adhandle, MAC);
 
-		fprintf(stdout, "\n[INFO] C3H Client: Log off. \n");
+		PRINTMSG( "\n[INFO] C3H Client: Log off. \n");
 	}
 	else
 	{
-		fprintf(stdout, "\n[INFO] C3H Client: Cancel. \n");
+		PRINTMSG( "\n[INFO] C3H Client: Cancel. \n");
 	}
 }
 
-void HandleH3CRequest(int type, const uint8_t request[])
+static void HandleH3CRequest(int type, const uint8_t request[])
 {
 	switch (type)
 	{
 	case IDENTITY:
 		if (connected)
 		{
-			DPRINTF("[%d] Server: Request Identity!\n",
-					(EAP_ID )captured[19]);
+			PRINTDEBUG("[%d] Server: Request Identity!\n",
+					(EAP_ID )request[19]);
+
 			GetIpFromDevice(ip, deviceName);
 			SendResponseIdentity(adhandle, request, ethhdr, ip, username,
-					connected);
+				connected);
+			
 
-			DPRINTF("[%d] Client: Response Identity*\n",
-					(EAP_ID )captured[19]);
+			PRINTDEBUG("[%d] Client: Response Identity*\n",
+					(EAP_ID )request[19]);
 		}
 		else
 		{
-			DPRINTF("[%d] Server: Request Identity!\n",
-					(EAP_ID )captured[19]);
+			PRINTDEBUG("[%d] Server: Request Identity!\n",
+					(EAP_ID )request[19]);
 			GetIpFromDevice(ip, deviceName);
 			SendResponseIdentity(adhandle, request, ethhdr, ip, username,
 					connected);
-			DPRINTF("[%d] Client: Response Identity.\n",
-					(EAP_ID )captured[19]);
+			PRINTDEBUG("[%d] Client: Response Identity.\n",
+					(EAP_ID )request[19]);
 		}
 		break;
 	case SECURITY:
-		DPRINTF("[%d] Server: Request SECURITY!\n",
-				(EAP_ID )captured[19]);
+		PRINTDEBUG("[%d] Server: Request SECURITY!\n",
+				(EAP_ID )request[19]);
 		GetIpFromDevice(ip, deviceName);
 
 		SendResponseSecurity(adhandle, request, ethhdr, ip, username);
 
-		DPRINTF("[%d] Client: Response SECURITY.\n",
-				(EAP_ID )captured[19]);
+		PRINTDEBUG("[%d] Client: Response SECURITY.\n",
+				(EAP_ID )request[19]);
 		break;
 	case MD5_CHALLENGE:
-		DPRINTF("[%d] Server: Request MD5-Challenge!\n",
-				(EAP_ID )captured[19]);
+		PRINTMSG( "[INFO] C3H Client: Authenticating password...\n");
+		//PRINTDEBUG("[%d] Server: Request MD5-Challenge!\n", (EAP_ID )captured[19]);
 		SendResponseMD5(adhandle, request, ethhdr, username, password);
-		DPRINTF("[%d] Client: Response MD5-Challenge.\n",
-				(EAP_ID )captured[19]);
+		PRINTDEBUG("[%d] Client: Response MD5-Challenge.\n",
+				(EAP_ID )request[19]);
 		break;
 	case NOTIFICATION:
-		DPRINTF("[%d] Server: Request Notification!\n",
-				captured[19]);
+		PRINTDEBUG("[%d] Server: Request Notification!\n",
+				request[19]);
 		SendResponseNotification(adhandle, request, ethhdr);
-		DPRINTF("     Client: Response Notification.\n");
+		PRINTDEBUG("     Client: Response Notification.\n");
 		break;
 	default:
-		DPRINTF("[%d] Server: Request (type:%d)!\n",
-				(EAP_ID )captured[19], (EAP_Type )captured[22]);
-		DPRINTF("Error! Unexpected request type\n");
-		exit(-1);
+		PRINTDEBUG("[%d] Server: Request (type:%d)!\n", (EAP_ID)request[19], (EAP_Type)request[22]);
+		PRINTDEBUG("Error! Unexpected request type\n");
 		break;
 	}
 }
@@ -394,8 +392,7 @@ bool broadcast)
 	pcap_sendpacket(handle, packet, sizeof(packet));
 }
 
-static
-void SendLogOffPkt(pcap_t *handle, const uint8_t localmac[])
+static void SendLogOffPkt(pcap_t *handle, const uint8_t localmac[])
 {
 	uint8_t packet[18];
 
@@ -411,8 +408,7 @@ void SendLogOffPkt(pcap_t *handle, const uint8_t localmac[])
 	pcap_sendpacket(handle, packet, sizeof(packet));
 }
 
-static
-void SendResponseNotification(pcap_t *handle, const uint8_t request[],
+static void SendResponseNotification(pcap_t *handle, const uint8_t request[],
 		const uint8_t ethhdr[])
 {
 	uint8_t response[60];
@@ -461,8 +457,7 @@ void SendResponseNotification(pcap_t *handle, const uint8_t request[],
 }
 
 
-static
-void SendResponseSecurity(pcap_t *handle, const uint8_t request[],
+static void SendResponseSecurity(pcap_t *handle, const uint8_t request[],
 		const uint8_t ethhdr[], const uint8_t ip[4], const char username[])
 {
 	int i;
@@ -498,7 +493,7 @@ void SendResponseSecurity(pcap_t *handle, const uint8_t request[],
 			response[i++] = 0x16;
 			response[i++] = 0x20;	//Length
 			//memcpy(response + i, pulse, 32);
-			FillZero(response+i, 15);
+			FillZero(response + i, 32);
 			i += 32;
 				
 			response[i++] = 0x15;	  // 上传IP地址
@@ -527,8 +522,7 @@ void SendResponseSecurity(pcap_t *handle, const uint8_t request[],
 	pcap_sendpacket(handle, response, i);
 }
 
-static
-void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[],
+static void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[],
 		const uint8_t ethhdr[], const uint8_t ip[4], const char username[],
 		bool connected)
 {
@@ -565,7 +559,7 @@ void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[],
 				response[i++] = 0x16;
 				response[i++] = 0x20;	//Length
 				//memcpy(response + i, pulse, 32);
-				FillZero(response+i, 15);
+				FillZero(response+i, 32);
 				i += 32;
 				
 				response[i++] = 0x15;	  // 上传IP地址
@@ -598,8 +592,7 @@ void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[],
 	return;
 }
 
-static
-void SendResponseMD5(pcap_t *handle, const uint8_t request[],
+static void SendResponseMD5(pcap_t *handle, const uint8_t request[],
 		const uint8_t ethhdr[], const char username[], const char passwd[])
 {
 	uint16_t eaplen;
@@ -643,8 +636,7 @@ void SendResponseMD5(pcap_t *handle, const uint8_t request[],
 //
 // 使用密钥key[]对数据data[]进行异或加密
 //（注：该函数也可反向用于解密）
-static
-void XOR(uint8_t data[], unsigned dlen, const char key[], unsigned klen)
+static void XOR(uint8_t data[], unsigned dlen, const char key[], unsigned klen)
 {
 	unsigned int i, j;
 
@@ -656,8 +648,7 @@ void XOR(uint8_t data[], unsigned dlen, const char key[], unsigned klen)
 		data[i] ^= key[j % klen];
 }
 
-static
-void FillClientVersionArea(uint8_t area[20])
+static void FillClientVersionArea(uint8_t area[20])
 {
 	uint32_t random;
 	char RandomKey[8 + 1];
@@ -677,12 +668,11 @@ void FillClientVersionArea(uint8_t area[20])
 	XOR(area, 20, H3C_KEY, strlen(H3C_KEY));
 }
 
-static
-void FillZero(uint8_t *data, uint32_t len)
+static void FillZero(uint8_t *data, uint32_t len)
 {
 	while(len--)
 	{
-		*data = 0x00;
+		*(data++) = 0x00;
 	}
 }
 
@@ -696,8 +686,7 @@ void FillWindowsVersionArea(uint8_t area[20])
 	XOR(area, 20, H3C_KEY, strlen(H3C_KEY));
 }*/
 
-static
-void FillBase64Area(char area[])
+static void FillBase64Area(char area[])
 {
 	uint8_t version[20];
 	const char Tbl[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -731,7 +720,7 @@ void FillBase64Area(char area[])
 }
 
 
-void FillMD5Area(uint8_t digest[], uint8_t id, const char passwd[], const uint8_t srcMD5[])
+static void FillMD5Area(uint8_t digest[], uint8_t id, const char passwd[], const uint8_t srcMD5[])
 {
 	uint8_t	msgbuf[128]; // msgbuf = ‘id‘ + ‘passwd’ + ‘srcMD5’
 	size_t	msglen;

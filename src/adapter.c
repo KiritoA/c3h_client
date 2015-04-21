@@ -2,7 +2,6 @@
  * Filename:     adapter.c
  *
  * Created by:	 liuqun
- * Revised:      2015年4月19日
  * Revised by:   KiritoA
  * Description:  获取网卡设置的函数
  *
@@ -20,9 +19,8 @@
 
 #if defined(WIN32)
 #include <winsock2.h>
-#include <iphlpapi.h>
-#include <stdlib.h>
-
+#include <iphlpapi.h>   
+#include <stdbool.h>
 #pragma comment(lib, "IPHLPAPI.lib")
 
 #define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
@@ -42,8 +40,9 @@ int GetIpFromDevice(uint8_t ip[4], const char *deviceName)
 #ifdef WIN32
 	pcap_if_t *alldevs;
 	pcap_if_t *dev;
-	pcap_addr_t *paddr;
+	pcap_addr_t *paddr = NULL;
 	SOCKADDR_IN *sin;
+	bool found = 0;
 	char errbuf[PCAP_ERRBUF_SIZE];
 	if (pcap_findalldevs(&alldevs, errbuf) == -1) {
 		fprintf(stderr, "Error in pcap_findalldevs: %s\n", errbuf);
@@ -51,7 +50,10 @@ int GetIpFromDevice(uint8_t ip[4], const char *deviceName)
 	}
 	for (dev = alldevs; dev != NULL; dev = dev->next) {
 		if (strcmp(dev->name, deviceName) == 0)
+		{
 			paddr = dev->addresses;
+			break;
+		}
 	}
 	for (; paddr; paddr = paddr->next)
 	{
@@ -59,12 +61,20 @@ int GetIpFromDevice(uint8_t ip[4], const char *deviceName)
 		if (sin->sin_family == AF_INET)
 		{
 			memcpy(ip, &sin->sin_addr.s_addr, 4);
+			found = true;
 		}
+	}
+
+	if(!found)
+	{
+		// 查询不到IP时默认填零处理
+		memset(ip, 0x00, 4);
 	}
 
 	pcap_freealldevs(alldevs);
 
 	return 0;
+
 #else
 
 	int fd;
@@ -186,13 +196,13 @@ void ListAllAdapters()
 	pcap_freealldevs(alldevs);
 }
 
-void RefreshIPAddress()
+int RefreshIPAddress()
 {
 #ifdef WIN32
 
-	system("ipconfig /renew");
+	return system("ipconfig /renew Ethernet*");
 #else
 
-	system("njit-RefreshIP");
+	return system("njit-RefreshIP");
 #endif
 }

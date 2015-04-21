@@ -1,7 +1,7 @@
 ﻿/*
  * Filename:     auth.h
  *
- * Created by:	 liuqun
+ * Created by:	 KiritoA
  * Revised:      2015年4月19日
  * Revised by:   KiritoA
  * Description:  801.1X认证核心函数
