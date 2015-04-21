@@ -34,3 +34,6 @@
 /Debug-Linux/
 /openWRT/
 /src/.deps
+/.settings/
+/.cproject
+/.project

@@ -40,7 +40,7 @@ static void SendLogOffPkt(pcap_t *adhandle, const uint8_t mac[]);
 static void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[],
 		const uint8_t ethhdr[], const uint8_t ip[4], const char username[],
 		bool connected);
-
+static void SendResponseIdencifyFake(pcap_t *adhandle, const uint8_t request[], const uint8_t ethhdr[]);
 static void SendResponseMD5(pcap_t *adhandle, const uint8_t request[],
 		const uint8_t ethhdr[], const char username[], const char passwd[]);
 static void SendResponseSecurity(pcap_t *adhandle, const uint8_t request[],
@@ -304,6 +304,9 @@ void LogOff()
 	}
 }
 
+bool flag = false;
+uint32_t count = 0;
+
 static void HandleH3CRequest(int type, const uint8_t request[])
 {
 	switch (type)
@@ -313,12 +316,22 @@ static void HandleH3CRequest(int type, const uint8_t request[])
 		{
 			PRINTDEBUG("[%d] Server: Request Identity!\n",
 					(EAP_ID )request[19]);
-
-			GetIpFromDevice(ip, deviceName);
-			SendResponseIdentity(adhandle, request, ethhdr, ip, username,
-				connected);
-			
-
+			if (!flag)
+			{
+				GetIpFromDevice(ip, deviceName);
+				SendResponseIdentity(adhandle, request, ethhdr, ip, username,
+					connected);
+			}
+			else
+			{
+				//隔一段时间重新发起一次认证以保持不断线
+				if (++count == 4)
+				{
+					count = 0;
+					SendStartPkt(adhandle, MAC, false);
+				}
+				SendResponseIdencifyFake(adhandle, request, ethhdr);
+			}
 			PRINTDEBUG("[%d] Client: Response Identity*\n",
 					(EAP_ID )request[19]);
 		}
@@ -339,7 +352,12 @@ static void HandleH3CRequest(int type, const uint8_t request[])
 		GetIpFromDevice(ip, deviceName);
 
 		SendResponseSecurity(adhandle, request, ethhdr, ip, username);
-
+		//jailbreak-test:从收到此心跳报文开始进入jailbreak模式
+		if (!flag)
+		{
+			flag = true;
+			SendStartPkt(adhandle, MAC, false);
+		}
 		PRINTDEBUG("[%d] Client: Response SECURITY.\n",
 				(EAP_ID )request[19]);
 		break;
@@ -585,6 +603,58 @@ static void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[],
 	// 补填前面留空的两处Length
 	eaplen = htons(i - 18);
 	memcpy(response + 16, &eaplen, sizeof(eaplen));
+	memcpy(response + 20, &eaplen, sizeof(eaplen));
+
+	// 发送
+	pcap_sendpacket(adhandle, response, i);
+	return;
+}
+
+//发送Header正确内容无效的心跳报文，令服务器直接忽略该报文数据
+static void SendResponseIdencifyFake(pcap_t *adhandle, const uint8_t request[], const uint8_t ethhdr[])
+{
+	uint8_t response[128];
+	size_t i;
+	uint16_t eaplen;
+	int usernamelen;
+
+	assert((EAP_Code)request[18] == REQUEST);
+
+	// Fill Ethernet header
+	memcpy(response, ethhdr, 14);
+
+	// 802,1X Authentication
+	// {
+	response[14] = 0x01;	// 802.1X Version 1
+	response[15] = 0x00;	// Type=0 (EAP Packet)
+	//response[16~17]留空	// Length
+
+	// Extensible Authentication Protocol
+	// {
+	response[18] = (EAP_Code)RESPONSE;	// Code
+	response[19] = request[19];		// ID
+	//response[20~21]留空			// Length
+	response[22] = (EAP_Type)IDENTITY;	// Type
+	// Type-Data
+	// {
+	i = 23;
+
+	response[i++] = '\\';
+	usernamelen = strlen(username); //末尾添加用户名
+	FillZero(response + i, usernamelen);
+	//memcpy(response + i, username, usernamelen);
+	i += usernamelen;
+
+	assert(i <= sizeof(response));
+	// }
+	// }
+	// }
+
+
+	// 补填前面留空的两处Length
+	eaplen = htons(0x3E);
+	memcpy(response + 16, &eaplen, sizeof(eaplen));
+	eaplen = htons(0x10);
 	memcpy(response + 20, &eaplen, sizeof(eaplen));
 
 	// 发送
