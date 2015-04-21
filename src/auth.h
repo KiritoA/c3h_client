@@ -14,8 +14,9 @@
 #include <pcap.h>
 
 void InitDevice(const char *DeviceName);
+void CloseDevice();
 
-int Authentication(const char *UserName, const char *Password, const char *DeviceName);
+int Authentication(const char *UserName, const char *Password);
 
 void LogOff();
 

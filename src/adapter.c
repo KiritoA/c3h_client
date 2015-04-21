@@ -110,7 +110,6 @@ int GetMacFromDevice(uint8_t mac[6], const char *deviceName)
 	PIP_ADAPTER_INFO pAdapterInfo;
 	PIP_ADAPTER_INFO pAdapter = NULL;
 	DWORD dwRetVal = 0;
-	UINT i;
 
 	if (strlen(deviceName) <= 12)
 		return 1;
@@ -134,9 +133,8 @@ int GetMacFromDevice(uint8_t mac[6], const char *deviceName)
 		while (pAdapter) {
 			if (strcmp(deviceName + 12, pAdapter->AdapterName) == 0)
 			{
-				for (i = 0; i < 6; i++) {
-					mac[i] = pAdapter->Address[i];
-				}
+				memcpy(mac, pAdapter->Address, 6);
+
 				break;
 			}
 			else
@@ -183,12 +181,8 @@ void ListAllAdapters()
 	if (pcap_findalldevs(&alldevs, errbuf) == 0){
 		while (!(alldevs == NULL)){
 			
-			fprintf(stderr, "Name:\t\t");
-			for (i = 0; i < strlen(alldevs->description); i++)
-			{
-				putchar(alldevs->description[i]);
-			}
-			fprintf(stderr, "\nDevice name:\t%s\n\n", alldevs->name);
+			fprintf(stderr, "Name:\t%s\n", alldevs->description);
+			fprintf(stderr, "ID:\t%s\n\n", alldevs->name);
 			alldevs = alldevs->next;
 			i++;
 		}
