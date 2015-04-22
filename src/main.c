@@ -22,6 +22,7 @@
 void signal_interrupted (int signo)
 {
     LogOff();
+	CloseDevice();
     exit(0);
 }
 
@@ -60,7 +61,7 @@ int main(int argc, char *argv[])
 	/* 检查命令行参数格式 */
 	if (argc != 4) {
 		PRINTMSG( "Usage:\n");
-		PRINTMSG( "c3h-client [username] [password] [adapter]\n\n");
+		PRINTMSG( "c3h-client [username] [password] [adapter id]\n\n");
 		ListAllAdapters();
 		exit(-1);
 	}
@@ -78,8 +79,9 @@ int main(int argc, char *argv[])
 	signal(SIGINT, signal_interrupted);
 
 	/* 调用子函数完成802.1X认证 */
-	Authentication(UserName, Password, DeviceName);
+	Authentication(UserName, Password);
 
+	CloseDevice();
 	return (0);
 }
 
