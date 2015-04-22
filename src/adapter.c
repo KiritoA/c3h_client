@@ -194,9 +194,8 @@ int RefreshIPAddress()
 {
 #ifdef WIN32
 
-	return system("ipconfig /renew Ethernet*");
+	return system("ipconfig /renew");
 #else
-
-	return system("njit-RefreshIP");
+	return system("./c3h-refresh");
 #endif
 }
