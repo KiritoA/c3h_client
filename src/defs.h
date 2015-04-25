@@ -31,12 +31,21 @@
  *
  */
 #ifdef NDEBUG
-#	define PRINTDEBUG(...)
+#define PRINTDEBUG(...)
 #else
-#	define PRINTDEBUG(...)	fprintf(stderr, __VA_ARGS__)
+#define PRINTDEBUG(...)	fprintf(stderr, __VA_ARGS__)
 #endif
 
+#ifdef WIN32
+#define PRINTMSG(...) printf(__VA_ARGS__)
+#else
 #define PRINTMSG(...) fprintf(stderr, __VA_ARGS__)
+#endif
+
 #define PRINTERR(...) fprintf(stderr, __VA_ARGS__)
+
+#ifdef WIN32
+#define sleep(x)	Sleep(x*1000)
+#endif
 
 #endif // DEBUG_H

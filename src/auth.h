@@ -13,6 +13,12 @@
 #include <stdint.h>
 #include <pcap.h>
 
+#define ERR_NOT_RESPOND				-1
+#define ERR_UNKNOWN_FAILED			100
+#define ERR_AUTH_FAILED				101
+#define ERR_AUTH_INVALID_VERSION	102
+#define ERR_AUTH_LIMITED			103
+
 #define ETH_LEN	14
 typedef struct{
 	uint8_t dest_mac[6];
@@ -37,7 +43,6 @@ typedef struct{
 	uint16_t length;
 	uint8_t type;
 }eap_header_t;
-
 
 void InitDevice(const char *DeviceName);
 void CloseDevice();
