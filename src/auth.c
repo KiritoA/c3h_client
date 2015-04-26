@@ -34,9 +34,9 @@
 #include "adapter.h"
 
 // 子函数声明
-static void HandleH3CRequest(int type, const uint8_t request[]);
+static void HandleEAPRequest(int type, const uint8_t request[]);
 
-static void SendEAPOLPacket(uint8_t type);
+static void SendEAPOL(uint8_t type);
 static void SendEAPPacket(uint8_t code, uint8_t type, uint8_t id, uint8_t *extPkt, uint16_t extLen);
 
 static void SendStartPkt();
@@ -76,9 +76,6 @@ const char H3C_VERSION[16] = "EN\x11V7.00-0102"; // 华为客户端版本号
 const char H3C_KEY[64] = "Oly5D62FaE94W7"; // H3C的另一个固定密钥，网友取自MacOSX版本的iNode官方客户端
 
 const int DefaultTimeout = 1500; //设置接收超时参数，单位ms
-char errbuf[PCAP_ERRBUF_SIZE];
-char FilterStr[100];
-struct bpf_program fcode;
 
 uint8_t local_ip[4] = { 0 };	// ip address
 uint8_t local_mac[6];
@@ -93,11 +90,11 @@ const char *deviceName = NULL;
 /* pcap */
 pcap_t *adhandle = NULL; // adapter handle
 
-bool isConnected = false;
+int authProgress = AUTH_PROGRESS_DISCONNECT;
 
 void InitDevice(const char *DeviceName)
 {
-	// NOTE: 这里没有检查网线是否已插好,网线插口可能接触不良
+	char errbuf[PCAP_ERRBUF_SIZE];
 
 	/* 打开适配器(网卡) */
 	adhandle = pcap_open_live(DeviceName, 65536, 1, DefaultTimeout, errbuf);
@@ -114,7 +111,10 @@ void InitDevice(const char *DeviceName)
 void CloseDevice()
 {
 	if (adhandle != NULL)
+	{
 		pcap_close(adhandle);
+		adhandle = NULL;
+	}
 }
 
 bool flag = false;
@@ -129,9 +129,15 @@ uint32_t count = 0;
 int Authentication(const char *UserName, const char *Password)
 {
 	struct pcap_pkthdr *header = NULL;
+	char FilterStr[100];
+	struct bpf_program fcode;
 
 	username = UserName;
  	password = Password;
+
+	authProgress = AUTH_PROGRESS_START;
+	flag = false;
+	count = 0;
 
 	/*
 	* 设置过滤器：
@@ -164,8 +170,11 @@ int Authentication(const char *UserName, const char *Password)
 	while (!serverFound)
 	{
 		retcode = pcap_next_ex(adhandle, &header, &captured);
-		if (retcode == 1 && (EAP_Code) captured[18] == REQUEST)
+		if (retcode == 1 && (EAP_Code)captured[18] == REQUEST)
+		{
 			serverFound = true;
+			PRINTMSG("C3H Client: Server responded\n");
+		}
 		else
 		{
 			//重试达到最大次数后退出
@@ -175,7 +184,7 @@ int Authentication(const char *UserName, const char *Password)
 				return ERR_NOT_RESPOND;
 			}
 			// 延时后重试
-			sleep(2);
+			sleep(3);
 			PRINTMSG(".");
 			SendStartPkt();
 			// NOTE: 这里没有检查网线是否接触不良或已被拔下
@@ -192,7 +201,10 @@ int Authentication(const char *UserName, const char *Password)
 			captured[10], captured[11]);
 	pcap_compile(adhandle, &fcode, FilterStr, 1, 0xff);
 	pcap_setfilter(adhandle, &fcode);
-		
+
+	if ((retcode = got_packet(NULL, header, captured)) != 0)
+		return retcode;
+
 	// 进入循环体
 	for (;;)
 	{
@@ -204,23 +216,20 @@ int Authentication(const char *UserName, const char *Password)
 		}
 			
 	}
-	
+
+	authProgress = AUTH_PROGRESS_DISCONNECT;
 	return (retcode);
 }
 
 void LogOff()
 {
-	if(isConnected)
-	{
-		SendLogOffPkt(adhandle, local_mac);
-
+	if (authProgress == AUTH_PROGRESS_CONNECTED)
 		PRINTMSG( "C3H Client: Log off.\n");
-	}
 	else
-	{
 		PRINTMSG( "C3H Client: Cancel.\n");
-	}
-	pcap_breakloop(adhandle);
+
+	SendLogOffPkt(adhandle, local_mac);
+	authProgress = AUTH_PROGRESS_DISCONNECT;
 }
 
 int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *packet)
@@ -237,28 +246,22 @@ int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *p
 	{
 	case REQUEST:
 		// 根据收到的Request，回复相应的Response包
-		HandleH3CRequest(eapHeader->type, packet);
-		if (flag)
-		{
-			//隔一段时间重新发起一次认证以保持不断线
-			if (++count == 4)
-			{
-				count = 0;
-				SendStartPkt();
-			}
-		}
+		HandleEAPRequest(eapHeader->type, packet);
 		break;
 	case SUCCESS:
-		isConnected = true;
-		PRINTMSG("C3H Client: You have passed the identity authentication\n");
-		// 刷新IP地址
-		PRINTMSG("C3H Client: Obtaining IP address...\n");
-		RefreshIPAddress();
-		//GetIpFromDevice(local_ip, deviceName);
-		//PRINTMSG("C3H Client: Current IP address is %d.%d.%d.%d\n", local_ip[0], local_ip[1], local_ip[2], local_ip[3]);
+		if (authProgress == AUTH_PROGRESS_INENTITY || authProgress == AUTH_PROGRESS_PASSWORD)
+		{
+			authProgress = AUTH_PROGRESS_CONNECTED;
+			PRINTMSG("C3H Client: You have passed the identity authentication\n");
+			// 刷新IP地址
+			PRINTMSG("C3H Client: Obtaining IP address...\n");
+			RefreshIPAddress();
+			//GetIpFromDevice(local_ip, deviceName);
+			//PRINTMSG("C3H Client: Current IP address is %d.%d.%d.%d\n", local_ip[0], local_ip[1], local_ip[2], local_ip[3]);
+		}
 		break;
 	case FAILURE:
-		isConnected = false;
+		authProgress = AUTH_PROGRESS_DISCONNECT;
 		// 处理认证失败信息
 
 		PRINTERR("[ERROR] C3H Client: Failure.\n");
@@ -276,8 +279,11 @@ int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *p
 			// fosu
 			// E63100:客户端版本号无效
 			// E63013:用户被列入黑名单
+			// E63027:接入时段限制
 			if (strncmp(msg, "E63100", 6) == 0)
 				return ERR_AUTH_INVALID_VERSION;
+			else if (strncmp(msg, "E63027", 6) == 0)
+				return ERR_AUTH_TIME_LIMIT;
 			else
 				return ERR_AUTH_FAILED;
 		}
@@ -299,71 +305,92 @@ int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *p
 		// TODO: 需要解出华为自定义数据包内容，该部分内容与心跳包数据有关
 		break;
 	default:
-		PRINTDEBUG("[%d] Server: Unknown EAP code:%d\n", eapHeader->id, eapHeader->code);
 		break;
 	}
 
 	return retcode;
 }
 
-static void HandleH3CRequest(int type, const uint8_t request[])
+static void HandleEAPRequest(int type, const uint8_t request[])
 {
 	switch (type)
 	{
 	case IDENTITY:
-		if (!isConnected)
+		PRINTDEBUG("[%d] Server: Request Identity!\n", (EAP_ID)request[19]);
+		if (authProgress == AUTH_PROGRESS_START)
+		{
+			authProgress = AUTH_PROGRESS_INENTITY;
 			PRINTMSG("C3H Client: Beginning authentication... [%s]\n", username);
-		else
-			PRINTDEBUG("[%d] Server: Request Identity!\n", (EAP_ID)request[19]);
-
-		if (!flag)
-		{
-			SendResponseIdentity(request);
-			PRINTDEBUG("[%d] Client: Response Identity.\n", (EAP_ID)request[19]);
-		}
-		else
-		{
-			SendResponseIdencifyFake(request);
-			PRINTDEBUG("[%d] Client: Response Identity*\n", (EAP_ID)request[19]);
 		}
 
+		if (authProgress == AUTH_PROGRESS_INENTITY || authProgress == AUTH_PROGRESS_CONNECTED)
+		{
+			if (!flag)
+			{
+				SendResponseIdentity(request);
+				PRINTDEBUG("[%d] Client: Response Identity.\n", (EAP_ID)request[19]);
+			}
+			else
+			{
+				SendResponseIdencifyFake(request);
+				PRINTDEBUG("[%d] Client: Response Identity*\n", (EAP_ID)request[19]);
+			}
+		}
 		break;
 	case SECURITY:
-		PRINTDEBUG("[%d] Server: Request Security!\n",
-				(EAP_ID )request[19]);
-		SendResponseSecurity(request);
-
-		//jailbreak-test:从收到此心跳报文开始进入jailbreak模式
-		if (!flag)
+		PRINTDEBUG("[%d] Server: Request Security!\n", (EAP_ID)request[19]);
+		if (authProgress == AUTH_PROGRESS_START)
 		{
-			flag = true;
-			SendStartPkt();
+			authProgress = AUTH_PROGRESS_INENTITY;
+			PRINTMSG("C3H Client: Beginning authentication... [%s]\n", username);
 		}
-		PRINTDEBUG("[%d] Client: Response Security.\n",
-				(EAP_ID )request[19]);
+		if (authProgress == AUTH_PROGRESS_INENTITY)
+			SendResponseIdentity(request);
+		else if (authProgress == AUTH_PROGRESS_CONNECTED)
+		{
+			SendResponseSecurity(request);
+			PRINTDEBUG("[%d] Client: Response Security.\n", (EAP_ID)request[19]);
+			//jailbreak-test:从收到此心跳报文开始进入jailbreak模式
+			if (!flag)
+			{
+				flag = true;
+				SendStartPkt();
+			}
+		}
+
 		break;
 	case MD5_CHALLENGE:
-		if (!isConnected)
+		PRINTDEBUG("[%d] Server: Request MD5-Challenge!\n", (EAP_ID)request[19]);
+		if (authProgress == AUTH_PROGRESS_INENTITY)
+		{
+			authProgress = AUTH_PROGRESS_PASSWORD;
 			PRINTMSG("C3H Client: Authenticating password...\n");
-		else
-			PRINTDEBUG("[%d] Server: Request MD5-Challenge!\n", (EAP_ID)request[19]);
-		SendResponseMD5(request);
-		PRINTDEBUG("[%d] Client: Response MD5-Challenge.\n",
-				(EAP_ID )request[19]);
+		}
+		if (authProgress >= AUTH_PROGRESS_PASSWORD)
+		{
+			SendResponseMD5(request);
+			PRINTDEBUG("[%d] Client: Response MD5-Challenge.\n",
+				(EAP_ID)request[19]);
+		}
 		break;
 	case NOTIFICATION:
-		if (!isConnected)
-			PRINTMSG("C3H Client: Server responded\n");
-		else
-			PRINTDEBUG("[%d] Server: Request Notification!\n", request[19]);
+		PRINTDEBUG("[%d] Server: Request Notification!\n", request[19]);
 		// 发送Response Notification
 		SendResponseNotification(request);
 		PRINTDEBUG("[%d] Client: Response Notification.\n", request[19]);
 		break;
 	default:
-		PRINTDEBUG("[%d] Server: Request (type:%d)!\n", (EAP_ID)request[19], (EAP_Type)request[22]);
-		PRINTDEBUG("Error! Unexpected request type\n");
 		break;
+	}
+
+	if (flag)
+	{
+		//隔一段时间重新发起一次认证以保持不断线
+		if (++count == 4)
+		{
+			count = 0;
+			SendStartPkt();
+		}
 	}
 }
 
@@ -400,7 +427,7 @@ static void SendEAPPacket(uint8_t code, uint8_t type, uint8_t id, uint8_t *extPk
 	pcap_sendpacket(adhandle, packet, i);
 }
 
-static void SendEAPOLPacket(uint8_t type)
+static void SendEAPOL(uint8_t type)
 {
 	uint8_t packet[64];
 	eapol_header_t eapol_header; // eapol header
@@ -428,12 +455,12 @@ static void SendEAPOLPacket(uint8_t type)
 
 static void SendStartPkt()
 {
-	SendEAPOLPacket(0x01);	// Type=Start
+	SendEAPOL(0x01);	// Type=Start
 }
 
 static void SendLogOffPkt()
 {
-	SendEAPOLPacket(0x02);	// Type=Logoff
+	SendEAPOL(0x02);	// Type=Logoff
 }
 
 static void SendResponseNotification(const uint8_t request[])
@@ -512,14 +539,14 @@ static void SendResponseIdentity(const uint8_t request[])
 	size_t usernamelen;
 
 	assert((EAP_Code )request[18] == REQUEST);
-	assert((EAP_Type )request[22] == IDENTITY);
 
 	// Extensible Authentication Protocol
+	/*
 	if(isConnected)
 	{
 		//连接后需要上报的内容
 		//TODO:暂时未能解密该部分内容，只作填充0处理
-		/*
+
 		response[i++] = 0x16;
 		response[i++] = 0x20;	//Length
 		//memcpy(response + i, pulse, 32);
@@ -530,8 +557,9 @@ static void SendResponseIdentity(const uint8_t request[])
 		response[i++] = 0x15;	  // 上传IP地址
 		response[i++] = 0x04;	  //
 		memcpy(response+i, local_ip, 4);//
-		i += 4;*/
+		i += 4;
 	}
+	*/
 
 	response[i++] = 0x06;		  // 携带版本号
 	response[i++] = 0x07;		  //
@@ -545,6 +573,8 @@ static void SendResponseIdentity(const uint8_t request[])
 	assert(i <= sizeof(response));
 
 	SendEAPPacket((EAP_Code)RESPONSE, (EAP_Type)IDENTITY, request[19], response, i);
+
+
 }
 
 //发送Header正确内容无效的心跳报文，令服务器直接忽略该报文数据

@@ -181,9 +181,13 @@ void ListAllAdapters()
 
 	if (pcap_findalldevs(&alldevs, errbuf) == 0){
 		while (!(alldevs == NULL)){
+#ifdef WIN32
 			PRINTMSG("Name:\t%s\n", alldevs->description);
 			PRINTMSG("ID:\t%s\n", alldevs->name);
-			PRINTMSG("-----------------------------------------------------------\n");
+			PRINTMSG("-------------------------------\n");
+#else
+			PRINTMSG("%s\n", alldevs->name);
+#endif
 			alldevs = alldevs->next;
 			i++;
 		}

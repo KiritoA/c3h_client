@@ -35,7 +35,7 @@ void showUsage()
 		"\tc3h-client [username] [password] [adapter]\n"
 		"\t[Username] Your Username.\n"
 		"\t[password] Your Password.\n"
-		"\t[adapter]  Specify ethernet adapter to use. Default in Linux is eth0\n"
+		"\t[adapter]  Specify ethernet adapter to use.\n"
 		"\t           Adapter in Linux is eth0,eth1...etc\n"
 		"\t           Adapter in Windows starts with '\\Device\\NPF_'\n\n");
 }
@@ -47,7 +47,7 @@ void showUsage()
 int main(int argc, char *argv[])
 {
 	int ret;
-	bool startAuth = true;
+	bool autoReconnect = true;
 	char *UserName;
 	char *Password;
 	char *DeviceName;
@@ -62,6 +62,7 @@ int main(int argc, char *argv[])
 	/* 检查命令行参数格式 */
 	if (argc<3 || argc>4) {
 		showUsage();
+		ListAllAdapters();
 		exit(-1);
 	} else if (argc == 4) {
 		DeviceName = argv[3]; // 允许从命令行指定设备名
@@ -89,19 +90,21 @@ int main(int argc, char *argv[])
 	//此时开始按下Ctrl+C可退出程序
 	signal(SIGINT, signal_interrupted);
 
+	int retry = 0;
 	time_t lastAuthTime;
 	do
 	{
 		lastAuthTime = time(NULL);
 		/* 调用子函数完成802.1X认证 */
 		ret = Authentication(UserName, Password);
-		if (ret == ERR_NOT_RESPOND || ret == ERR_AUTH_FAILED)
+		if (ret == ERR_NOT_RESPOND)
 		{
 			PRINTMSG("C3H Client: Connection Failed. Code:%d\n", ret);
 			break;
 		}
-		else if (ret == 0 || ret == ERR_AUTH_LIMITED)
+		else if (ret == 0 || ret == ERR_AUTH_TIME_LIMIT)
 		{
+			PRINTMSG("C3H Client: Connection closed.\n");
 			break;
 		}
 		else
@@ -111,11 +114,11 @@ int main(int argc, char *argv[])
 				sleep(60);
 			}
 			sleep(5);
-			PRINTMSG("C3H Client: Reconnecting...\n");
+			PRINTMSG("C3H Client: Reconnecting...[%d]\n", ++retry);
 		}
 			
 
-	} while (startAuth);
+	} while (autoReconnect);
 	CloseDevice();
 	return (0);
 }
