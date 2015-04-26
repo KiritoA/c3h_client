@@ -15,6 +15,7 @@
 
 #include <pcap.h>
 
+#include "defs.h"
 #include "adapter.h"
 
 #if defined(WIN32)
@@ -45,7 +46,7 @@ int GetIpFromDevice(uint8_t ip[4], const char *deviceName)
 	bool found = 0;
 	char errbuf[PCAP_ERRBUF_SIZE];
 	if (pcap_findalldevs(&alldevs, errbuf) == -1) {
-		fprintf(stderr, "Error in pcap_findalldevs: %s\n", errbuf);
+		PRINTERR("Error in pcap_findalldevs: %s\n", errbuf);
 		return 1;
 	}
 	for (dev = alldevs; dev != NULL; dev = dev->next) {
@@ -176,13 +177,17 @@ void ListAllAdapters()
 	size_t i = 0;
 	char errbuf[PCAP_ERRBUF_SIZE];
 
-	fprintf(stderr, "Adapters available:\n");
+	PRINTMSG("Adapters available:\n");
 
 	if (pcap_findalldevs(&alldevs, errbuf) == 0){
 		while (!(alldevs == NULL)){
-			
-			fprintf(stderr, "Name:\t%s\n", alldevs->description);
-			fprintf(stderr, "ID:\t%s\n\n", alldevs->name);
+#ifdef WIN32
+			PRINTMSG("Name:\t%s\n", alldevs->description);
+			PRINTMSG("ID:\t%s\n", alldevs->name);
+			PRINTMSG("-------------------------------\n");
+#else
+			PRINTMSG("%s\n", alldevs->name);
+#endif
 			alldevs = alldevs->next;
 			i++;
 		}

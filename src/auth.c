@@ -25,24 +25,23 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #else
-#define sleep(x)	Sleep(x*1000)
+
 #endif
 
 #include "auth.h"
 #include "md5.h"
-#include "debug.h"
+#include "defs.h"
 #include "adapter.h"
 
 // 子函数声明
-static void HandleH3CRequest(int type, const uint8_t request[]);
+static void HandleEAPRequest(int type, const uint8_t request[]);
 
-static void SendEAPOLPacket(uint8_t type);
+static void SendEAPOL(uint8_t type);
 static void SendEAPPacket(uint8_t code, uint8_t type, uint8_t id, uint8_t *extPkt, uint16_t extLen);
 
 static void SendStartPkt();
 static void SendLogOffPkt();
 static void SendResponseIdentity(const uint8_t request[]);
-
 static void SendResponseMD5(const uint8_t request[]);
 static void SendResponseSecurity(const uint8_t request[]);
 static void SendResponseNotification(const uint8_t request[]);
@@ -53,6 +52,7 @@ static void FillBase64Area(char area[]);
 static void FillMD5Area(uint8_t digest[], uint8_t id, const char passwd[],
 		const uint8_t srcMD5[]);
 
+int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *packet);
 
 // typedef
 typedef enum
@@ -74,46 +74,26 @@ const char H3C_VERSION[16] = "EN\x11V7.00-0102"; // 华为客户端版本号
 //const char H3C_KEY[64]    ="HuaWei3COM1X";  // H3C的固定密钥
 const char H3C_KEY[64] = "Oly5D62FaE94W7"; // H3C的另一个固定密钥，网友取自MacOSX版本的iNode官方客户端
 
-unsigned char pulse[32] =
-{ 0x4b, 0x9d, 0xd2, 0xaf, 0xe6, 0xf7, 0x8a, 0xec, 0x6b, 0x97, 0x91, 0xf4, 0x62,
-		0x32, 0x81, 0x49, 0x97, 0xb4, 0x26, 0x79, 0x2f, 0x16, 0x89, 0xfe, 0xc0,
-		0x74, 0x3c, 0x4d, 0x4d, 0x43, 0x41, 0x02 };
-
-
-/**
- * 函数：Authentication()
- *
- * 使用以太网进行802.1X认证(802.1X Authentication)
- * 该函数将不断循环，应答802.1X认证会话，直到遇到错误后才退出
- */
-
 const int DefaultTimeout = 1500; //设置接收超时参数，单位ms
-char errbuf[PCAP_ERRBUF_SIZE];
-char FilterStr[100];
-struct bpf_program fcode;
 
 uint8_t local_ip[4] = { 0 };	// ip address
 uint8_t local_mac[6];
 
 eth_header_t eth_header; // ethernet header
-eapol_header_t eapol_header; // eapol header
-eap_header_t eap_header; // eap header
 
 /* 认证信息 */
 const char *username = NULL;
 const char *password = NULL;
 const char *deviceName = NULL;
 
-/* pcap packet */
+/* pcap */
 pcap_t *adhandle = NULL; // adapter handle
-struct pcap_pkthdr *header = NULL;
-const u_char *captured = NULL;
 
-bool connected = false;
+int authProgress = AUTH_PROGRESS_DISCONNECT;
 
 void InitDevice(const char *DeviceName)
 {
-	// NOTE: 这里没有检查网线是否已插好,网线插口可能接触不良
+	char errbuf[PCAP_ERRBUF_SIZE];
 
 	/* 打开适配器(网卡) */
 	adhandle = pcap_open_live(DeviceName, 65536, 1, DefaultTimeout, errbuf);
@@ -125,18 +105,45 @@ void InitDevice(const char *DeviceName)
 	deviceName = DeviceName;
 	/* 查询本机MAC地址 */
 	GetMacFromDevice(local_mac, deviceName);
+}
+
+void CloseDevice()
+{
+	if (adhandle != NULL)
+	{
+		pcap_close(adhandle);
+		adhandle = NULL;
+	}
+}
+
+
+/**
+ * 函数：Authentication()
+ *
+ * 使用以太网进行802.1X认证(802.1X Authentication)
+ * 该函数将不断循环，应答802.1X认证会话，直到遇到错误后才退出
+ */
+int Authentication(const char *UserName, const char *Password)
+{
+	struct pcap_pkthdr *header = NULL;
+	char FilterStr[100];
+	struct bpf_program fcode;
+
+	username = UserName;
+ 	password = Password;
+
+	authProgress = AUTH_PROGRESS_START;
 
 	/*
-	 * 设置过滤器：
-	 * 初始情况下只捕获发往本机的802.1X认证会话，不接收多播信息（避免误捕获其他客户端发出的多播信息）
-	 * 进入循环体前可以重设过滤器，那时再开始接收多播信息
-	 */
+	* 设置过滤器：
+	* 初始情况下只捕获发往本机的802.1X认证会话，不接收多播信息（避免误捕获其他客户端发出的多播信息）
+	* 进入循环体前可以重设过滤器，那时再开始接收多播信息
+	*/
 	sprintf(FilterStr,
-			"(ether proto 0x888e) and (ether dst host %02x:%02x:%02x:%02x:%02x:%02x)",
-			local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5]);
+		"(ether proto 0x888e) and (ether dst host %02x:%02x:%02x:%02x:%02x:%02x)",
+		local_mac[0], local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5]);
 	pcap_compile(adhandle, &fcode, FilterStr, 1, 0xff);
 	pcap_setfilter(adhandle, &fcode);
-
 
 	// 初始化应答包的报头
 	// 默认以多播方式应答802.1X认证设备发来的Request
@@ -144,222 +151,216 @@ void InitDevice(const char *DeviceName)
 	memcpy(eth_header.src_mac, local_mac, 6);
 	eth_header.eth_type = htons(0x888e);	//88 8e
 
+	/* 主动发起认证会话 */
+	SendStartPkt();
+	PRINTMSG( "C3H Client: Connecting to the network ...\n");
 
-}
-
-void CloseDevice()
-{
-	if (adhandle != NULL)
-		pcap_close(adhandle);
-}
-
-
-int Authentication(const char *UserName, const char *Password)
-{
 	int retcode = 0;
+	int retry = 0;
 
-	username = UserName;
- 	password = Password;
+	const u_char *captured = NULL;
 
-
-	START_AUTHENTICATION:
+	/* 等待认证服务器的回应 */
+	bool serverFound = false;
+	while (!serverFound)
 	{
-		int retry = 0;
-
-		/* 主动发起认证会话 */
-		SendStartPkt();
-		PRINTMSG( "[INFO] C3H Client: Connecting to the network ...\n");
-
-		/* 等待认证服务器的回应 */
-		bool serverFound = false;
-		while (!serverFound)
+		retcode = pcap_next_ex(adhandle, &header, &captured);
+		if (retcode == 1 && (EAP_Code)captured[18] == REQUEST)
 		{
-			retcode = pcap_next_ex(adhandle, &header, &captured);
-			if (retcode == 1 && (EAP_Code) captured[18] == REQUEST)
-				serverFound = true;
-			else
+			serverFound = true;
+			PRINTMSG("C3H Client: Server responded\n");
+		}
+		else
+		{
+			//重试达到最大次数后退出
+			if (retry++ == 5)
 			{
-				//重试达到最大次数后退出
-				if(++retry == 5)
-				{
-					PRINTERR("[ERROR] C3H Client: Server did not respond\n");
-					return -1;
-				}
-				// 延时后重试
-				sleep(2);
-				PRINTDEBUG(".");
-				SendStartPkt();
-				// NOTE: 这里没有检查网线是否接触不良或已被拔下
+				PRINTERR("\n[ERROR] C3H Client: Server did not respond\n");
+				return ERR_NOT_RESPOND;
 			}
-		}
-
-		//收到报文后修改为单播地址认证
-		memcpy(eth_header.dest_mac, captured + 6, 6);
-
-		// 收到的第一个包可能是Request Notification。取决于校方网络配置
-		if ((EAP_Type) captured[22] == NOTIFICATION)
-		{
-			PRINTMSG(  "[INFO] C3H Client: Server responded\n");
-			// 发送Response Notification
-			SendResponseNotification(captured);
-			PRINTDEBUG("[%d] C3H Client: Response Notification.\n", captured[19]);
-			sleep(2);
-			// 继续接收下一个Request包
-			retcode = pcap_next_ex(adhandle, &header, &captured);
-			assert(retcode == 1);
-			assert((EAP_Code )captured[18] == REQUEST);
-		}
-
-		// 分情况应答下一个包
-		if ((EAP_Type) captured[22] == IDENTITY)
-		{
-			// 通常情况会收到包Request Identity，应回答Response Identity
-			PRINTMSG( "[INFO] C3H Client: Beginning authentication... [%s]\n", username);
-			SendResponseIdentity(captured);
-			PRINTDEBUG("[%d] C3H Client: Response Identity.\n", (EAP_ID )captured[19]);
-		}
-		else if ((EAP_Type)captured[22] == SECURITY)
-		{	// 遇到SECURITY包时需要特殊处理
-			// 中南财经政法大学目前使用的格式：
-			// 收到第一个Request SECURITY时要回答Response Identity
-			PRINTMSG( "[INFO] C3H Client: Beginning authentication... [%s]\n", username);
-			SendResponseIdentity(captured);
-			PRINTDEBUG("[%d] C3H Client: Response Identity.\n", (EAP_ID)captured[19]);
-		}
-
-		// 重设过滤器，只捕获华为802.1X认证设备发来的包（包括多播Request Identity / Request AVAILABLE）
-		sprintf(FilterStr,
-				"(ether proto 0x888e) and (ether src host %02x:%02x:%02x:%02x:%02x:%02x)",
-				captured[6], captured[7], captured[8], captured[9],
-				captured[10], captured[11]);
-		pcap_compile(adhandle, &fcode, FilterStr, 1, 0xff);
-		pcap_setfilter(adhandle, &fcode);
-		
-		// 进入循环体
-		for (;;)
-		{
-			// 调用pcap_next_ex()函数捕获数据包
-			if (pcap_next_ex(adhandle, &header, &captured) == 1)
-			{
-
-				// 根据收到的Request，回复相应的Response包
-				if ((EAP_Code)captured[18] == REQUEST)
-				{
-					HandleH3CRequest(captured[22], captured);
-				}
-				else if ((EAP_Code)captured[18] == FAILURE)
-				{
-					connected = false;
-					// 处理认证失败信息
-					uint8_t errtype = captured[22];
-					uint8_t msgsize = captured[23];
-					const char *msg = (const char*)&captured[24];
-					PRINTERR("[ERROR] C3H Client: Failure.\n");
-					if (errtype == 0x09 && msgsize > 0)
-					{	// 输出错误提示消息
-						PRINTERR("%s\n", msg);
-						// 已知的几种错误如下
-						// E2531:用户名不存在
-						// E2535:Service is paused
-						// E2542:该用户帐号已经在别处登录
-						// E2547:接入时段限制
-						// E2553:密码错误
-						// E2602:认证会话不存在
-						// E3137:客户端版本号无效
-					}
-					else if (errtype == 0x08) // 可能网络无流量时服务器结束此次802.1X认证会话
-					{	// 遇此情况客户端立刻发起新的认证会话
-						goto START_AUTHENTICATION;
-					}
-					else
-					{
-						PRINTDEBUG("errtype=0x%02x\n", errtype);
-					}
-
-					retcode = errtype;
-					break;
-				}
-				else if ((EAP_Code)captured[18] == SUCCESS)
-				{
-					connected = true;
-					PRINTMSG("[INFO] C3H Client: You have passed the identity authentication\n");
-					// 刷新IP地址
-					PRINTMSG("[INFO] C3H Client: Obtaining IP address...\n");
-					RefreshIPAddress();
-					//GetIpFromDevice(local_ip, deviceName);
-					//PRINTMSG("[INFO] C3H Client: Current IP address is %d.%d.%d.%d\n", local_ip[0], local_ip[1], local_ip[2], local_ip[3]);
-				}
-				else if ((EAP_Code)captured[18] == H3CDATA)
-				{
-					PRINTMSG("[%d] Server: (H3C data)\n", captured[19]);
-					// TODO: 需要解出华为自定义数据包内容，该部分内容与心跳包数据有关
-				}
-				else
-				{
-					PRINTDEBUG("[%d] H3C:Unknown EAP code:%d\n", captured[19], captured[18]);
-				}
-			}
-			else
-			{
-				//PRINTDEBUG("."); // 若捕获失败，则等1秒后重试
-				//sleep(1);     // 直到成功捕获到一个数据包后再跳出
-				// NOTE: 这里没有检查网线是否已被拔下或插口接触不良
-			}
+			// 延时后重试
+			sleep(3);
+			PRINTMSG(".");
+			SendStartPkt();
+			// NOTE: 这里没有检查网线是否接触不良或已被拔下
 		}
 	}
+
+	//收到报文后修改为单播地址认证
+	memcpy(eth_header.dest_mac, captured + 6, 6);
+
+	// 重设过滤器，只捕获华为802.1X认证设备发来的包（包括多播Request Identity / Request AVAILABLE）
+	sprintf(FilterStr,
+			"(ether proto 0x888e) and (ether src host %02x:%02x:%02x:%02x:%02x:%02x)",
+			captured[6], captured[7], captured[8], captured[9],
+			captured[10], captured[11]);
+	pcap_compile(adhandle, &fcode, FilterStr, 1, 0xff);
+	pcap_setfilter(adhandle, &fcode);
+
+	if ((retcode = got_packet(NULL, header, captured)) != 0)
+		return retcode;
+
+	// 进入循环体
+	for (;;)
+	{
+		// 调用pcap_next_ex()函数捕获数据包
+		if (pcap_next_ex(adhandle, &header, &captured) == 1)
+		{
+			if ((retcode = got_packet(NULL, header, captured)) != 0)
+				break;
+		}
+			
+	}
+
+	authProgress = AUTH_PROGRESS_DISCONNECT;
 	return (retcode);
 }
 
 void LogOff()
 {
-	if(connected)
-	{
-		SendLogOffPkt(adhandle, local_mac);
-
-		PRINTMSG( "\n[INFO] C3H Client: Log off. \n");
-	}
+	if (authProgress == AUTH_PROGRESS_CONNECTED)
+		PRINTMSG( "C3H Client: Log off.\n");
 	else
-	{
-		PRINTMSG( "\n[INFO] C3H Client: Cancel. \n");
-	}
+		PRINTMSG( "C3H Client: Cancel.\n");
+
+	SendLogOffPkt(adhandle, local_mac);
+	authProgress = AUTH_PROGRESS_DISCONNECT;
 }
 
-static void HandleH3CRequest(int type, const uint8_t request[])
+int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *packet)
+{
+	int retcode = 0;
+
+	const eap_header_t *eapHeader = (eap_header_t*)(packet + ETH_LEN);
+
+	uint8_t errtype = packet[22];
+	uint8_t msgsize = packet[23];
+	const char *msg = (const char*)&packet[24];
+
+	switch (eapHeader->code)
+	{
+	case REQUEST:
+		// 根据收到的Request，回复相应的Response包
+		HandleEAPRequest(eapHeader->type, packet);
+		break;
+	case SUCCESS:
+		if (authProgress == AUTH_PROGRESS_INENTITY || authProgress == AUTH_PROGRESS_PASSWORD)
+		{
+			authProgress = AUTH_PROGRESS_CONNECTED;
+			PRINTMSG("C3H Client: You have passed the identity authentication\n");
+			// 刷新IP地址
+			PRINTMSG("C3H Client: Obtaining IP address...\n");
+			RefreshIPAddress();
+			//GetIpFromDevice(local_ip, deviceName);
+			//PRINTMSG("C3H Client: Current IP address is %d.%d.%d.%d\n", local_ip[0], local_ip[1], local_ip[2], local_ip[3]);
+		}
+		break;
+	case FAILURE:
+		authProgress = AUTH_PROGRESS_DISCONNECT;
+		// 处理认证失败信息
+
+		PRINTERR("[ERROR] C3H Client: Failure.\n");
+		if (errtype == 0x09 && msgsize > 0)
+		{	// 输出错误提示消息
+			PRINTERR("%s\n", msg);
+			// 已知的几种错误如下
+			// E2531:用户名不存在
+			// E2535:Service is paused
+			// E2542:该用户帐号已经在别处登录
+			// E2547:接入时段限制
+			// E2553:密码错误
+			// E2602:认证会话不存在
+			// E3137:客户端版本号无效
+			// fosu
+			// E63100:客户端版本号无效
+			// E63013:用户被列入黑名单
+			// E63027:接入时段限制
+			if (strncmp(msg, "E63100", 6) == 0)
+				return ERR_AUTH_INVALID_VERSION;
+			else if (strncmp(msg, "E63027", 6) == 0)
+				return ERR_AUTH_TIME_LIMIT;
+			else
+				return ERR_AUTH_FAILED;
+		}
+		else if (errtype == 0x08) // 可能网络无流量时服务器结束此次802.1X认证会话
+		{	// 遇此情况客户端立刻发起新的认证会话
+			//goto START_AUTHENTICATION; 
+			return ERR_UNKNOWN_FAILED;
+		}
+		else
+		{
+			PRINTERR("errtype=0x%02x\n", errtype);
+			return ERR_UNKNOWN_FAILED;
+		}
+
+		retcode = errtype;
+		break;
+	case H3CDATA:
+		PRINTMSG("[%d] Server: (H3C data)\n", eapHeader->id);
+		// TODO: 需要解出华为自定义数据包内容，该部分内容与心跳包数据有关
+		break;
+	default:
+		break;
+	}
+
+	return retcode;
+}
+
+static void HandleEAPRequest(int type, const uint8_t request[])
 {
 	switch (type)
 	{
 	case IDENTITY:
-		PRINTDEBUG("[%d] Server: Request Identity!\n",
-				(EAP_ID )request[19]);
+		PRINTDEBUG("[%d] Server: Request Identity!\n", (EAP_ID)request[19]);
+		if (authProgress == AUTH_PROGRESS_START)
+		{
+			authProgress = AUTH_PROGRESS_INENTITY;
+			PRINTMSG("C3H Client: Beginning authentication... [%s]\n", username);
+		}
 
-		SendResponseIdentity(request);
-		PRINTDEBUG("[%d] Client: Response Identity.\n",
-				(EAP_ID )request[19]);
+		if (authProgress == AUTH_PROGRESS_INENTITY || authProgress == AUTH_PROGRESS_CONNECTED)
+		{
+			SendResponseIdentity(request);
+			PRINTDEBUG("[%d] Client: Response Identity.\n", (EAP_ID)request[19]);
+		}
 		break;
 	case SECURITY:
-		PRINTDEBUG("[%d] Server: Request Security!\n",
-				(EAP_ID )request[19]);
-		SendResponseSecurity(request);
+		PRINTDEBUG("[%d] Server: Request Security!\n", (EAP_ID)request[19]);
+		if (authProgress == AUTH_PROGRESS_START)
+		{
+			authProgress = AUTH_PROGRESS_INENTITY;
+			PRINTMSG("C3H Client: Beginning authentication... [%s]\n", username);
+		}
+		if (authProgress == AUTH_PROGRESS_INENTITY)
+			SendResponseIdentity(request);
+		else if (authProgress == AUTH_PROGRESS_CONNECTED)
+		{
+			SendResponseSecurity(request);
+			PRINTDEBUG("[%d] Client: Response Security.\n", (EAP_ID)request[19]);
+		}
 
-		PRINTDEBUG("[%d] C3H Client: Response Security.\n",
-				(EAP_ID )request[19]);
 		break;
 	case MD5_CHALLENGE:
-		PRINTMSG( "[INFO] C3H Client: Authenticating password...\n");
-		//PRINTDEBUG("[%d] Server: Request MD5-Challenge!\n", (EAP_ID )captured[19]);
-		SendResponseMD5(request);
-		PRINTDEBUG("[%d] C3H Client: Response MD5-Challenge.\n",
-				(EAP_ID )request[19]);
+		PRINTDEBUG("[%d] Server: Request MD5-Challenge!\n", (EAP_ID)request[19]);
+		if (authProgress == AUTH_PROGRESS_INENTITY)
+		{
+			authProgress = AUTH_PROGRESS_PASSWORD;
+			PRINTMSG("C3H Client: Authenticating password...\n");
+		}
+		if (authProgress >= AUTH_PROGRESS_PASSWORD)
+		{
+			SendResponseMD5(request);
+			PRINTDEBUG("[%d] Client: Response MD5-Challenge.\n",
+				(EAP_ID)request[19]);
+		}
 		break;
 	case NOTIFICATION:
-		PRINTDEBUG("[%d] Server: Request Notification!\n",
-				request[19]);
+		PRINTDEBUG("[%d] Server: Request Notification!\n", request[19]);
+		// 发送Response Notification
 		SendResponseNotification(request);
-		PRINTDEBUG("     C3H Client: Response Notification.\n");
+		PRINTDEBUG("[%d] Client: Response Notification.\n", request[19]);
 		break;
 	default:
-		PRINTDEBUG("[%d] Server: Request (type:%d)!\n", (EAP_ID)request[19], (EAP_Type)request[22]);
-		PRINTDEBUG("Error! Unexpected request type\n");
 		break;
 	}
 }
@@ -368,6 +369,8 @@ static void SendEAPPacket(uint8_t code, uint8_t type, uint8_t id, uint8_t *extPk
 {
 	uint8_t packet[120];
 	size_t i = 0;
+	eap_header_t eap_header; // eap header
+
 	// Fill Ethernet header
 	memcpy(packet, &eth_header, ETH_LEN);
 	i += ETH_LEN;
@@ -388,16 +391,17 @@ static void SendEAPPacket(uint8_t code, uint8_t type, uint8_t id, uint8_t *extPk
 	
 	if (i < EAP_MIN_LEN)
 	{
-		memset(packet + i, 0x00, 64 - i);
+		memset(packet + i, 0x00, 60 - i);
 		i = EAP_MIN_LEN;
 	}
 	// 发包
 	pcap_sendpacket(adhandle, packet, i);
 }
 
-static void SendEAPOLPacket(uint8_t type)
+static void SendEAPOL(uint8_t type)
 {
 	uint8_t packet[64];
+	eapol_header_t eapol_header; // eapol header
 
 	// Fill Ethernet header
 	memcpy(packet, &eth_header, ETH_LEN);
@@ -411,18 +415,19 @@ static void SendEAPOLPacket(uint8_t type)
 
 	memset(packet + 18, 0x00, (64 - ETH_LEN - EAPOL_HDR_LEN));	//剩余字节填充0
 
+
 	// 发包
 	pcap_sendpacket(adhandle, packet, sizeof(packet));
 }
 
 static void SendStartPkt()
 {
-	SendEAPOLPacket(0x01);	// Type=Start
+	SendEAPOL(0x01);	// Type=Start
 }
 
 static void SendLogOffPkt()
 {
-	SendEAPOLPacket(0x02);	// Type=Logoff
+	SendEAPOL(0x02);	// Type=Logoff
 }
 
 static void SendResponseNotification(const uint8_t request[])
@@ -501,14 +506,14 @@ static void SendResponseIdentity(const uint8_t request[])
 	size_t usernamelen;
 
 	assert((EAP_Code )request[18] == REQUEST);
-	assert((EAP_Type )request[22] == IDENTITY);
 
 	// Extensible Authentication Protocol
-	if(connected)
+	/*
+	if(isConnected)
 	{
 		//连接后需要上报的内容
 		//TODO:暂时未能解密该部分内容，只作填充0处理
-		/*
+
 		response[i++] = 0x16;
 		response[i++] = 0x20;	//Length
 		//memcpy(response + i, pulse, 32);
@@ -519,8 +524,9 @@ static void SendResponseIdentity(const uint8_t request[])
 		response[i++] = 0x15;	  // 上传IP地址
 		response[i++] = 0x04;	  //
 		memcpy(response+i, local_ip, 4);//
-		i += 4;*/
+		i += 4;
 	}
+	*/
 
 	response[i++] = 0x06;		  // 携带版本号
 	response[i++] = 0x07;		  //
@@ -534,6 +540,8 @@ static void SendResponseIdentity(const uint8_t request[])
 	assert(i <= sizeof(response));
 
 	SendEAPPacket((EAP_Code)RESPONSE, (EAP_Type)IDENTITY, request[19], response, i);
+
+
 }
 
 static void SendResponseMD5(const uint8_t request[])
