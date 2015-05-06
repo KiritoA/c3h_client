@@ -1,12 +1,8 @@
-c3h-client
+c3h-client分支项目
 ===========
-该项目代码源于以下项目：
+该项目是njit8021xclient的fork，是该项目的独立分支。
 
-njit8021xclient:https://github.com/liuqun/njit8021xclient
-
-以及bitdust的fork:https://github.com/bitdust/njit8021xclient
-
-由于对njit8021xclient版本的结构和内容作出不少修改，因此决定从该项目分离并建立一个新项目
+由于对njit8021xclient版本的结构和内容作出不少修改，在之前c3h-client是一个独立项目，现在决定直接归入njit8021xclient的fork项目并独立出一个新分支。
 
 License
 ---------
@@ -18,6 +14,7 @@ License
 * 基于iNode V7.00-0102版本的EAP报文分析进行修改
 * 可运作于Linux/openWRT/Windows
 * 集成MD5算法，不需要再依赖openssl
+* 增加断线重连机制
 * 测试环境为佛大
 * 暂时未集成makefile，如有需要可修改使用njit8021xclient项目相关文件
 
