@@ -77,8 +77,8 @@ const char H3C_KEY[64] = "Oly5D62FaE94W7"; // H3C的另一个固定密钥，网�
 
 const int DefaultTimeout = 1500; //设置接收超时参数，单位ms
 
-uint8_t local_ip[4] = { 0 };	// ip address
-uint8_t local_mac[6];
+uint8_t local_ip[4] = { 0, 0, 0, 0 };	// ip address
+uint8_t local_mac[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 eth_header_t eth_header; // ethernet header
 
@@ -574,7 +574,6 @@ static void SendResponseIdentity(const uint8_t request[])
 
 	SendEAPPacket((EAP_Code)RESPONSE, (EAP_Type)IDENTITY, request[19], response, i);
 
-
 }
 
 //发送Header正确内容无效的心跳报文，令服务器直接忽略该报文数据
@@ -720,7 +719,6 @@ static void FillBase64Area(char area[])
 	area[26] = Tbl[((c2 & 0x0f) << 2)];
 	area[27] = '=';
 }
-
 
 static void FillMD5Area(uint8_t digest[], uint8_t id, const char passwd[], const uint8_t srcMD5[])
 {
