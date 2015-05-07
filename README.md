@@ -18,6 +18,7 @@ License
 * 基于iNode V7.00-0102版本的EAP报文分析进行修改
 * 可运作于Linux/openWRT/Windows
 * 集成MD5算法，不需要再依赖openssl
+* 增加断线重连机制
 * 测试环境为佛大
 * 暂时未集成makefile，如有需要可修改使用njit8021xclient项目相关文件
 
