@@ -177,16 +177,16 @@ void ListAllAdapters()
 	size_t i = 0;
 	char errbuf[PCAP_ERRBUF_SIZE];
 
-	PRINTMSG("Adapters available:\n");
+	PRINT("Adapters available:\n");
 
 	if (pcap_findalldevs(&alldevs, errbuf) == 0){
 		while (!(alldevs == NULL)){
 #ifdef WIN32
-			PRINTMSG("Name:\t%s\n", alldevs->description);
-			PRINTMSG("ID:\t%s\n", alldevs->name);
-			PRINTMSG("-------------------------------\n");
+			PRINT("Name:\t%s\n", alldevs->description);
+			PRINT("ID:\t%s\n", alldevs->name);
+			PRINT("-------------------------------\n");
 #else
-			PRINTMSG("%s\n", alldevs->name);
+			PRINT("%s\n", alldevs->name);
 #endif
 			alldevs = alldevs->next;
 			i++;

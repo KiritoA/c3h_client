@@ -310,8 +310,7 @@ md5_process(md5_state_t *pms, const md5_byte_t *data /*[64]*/)
     pms->abcd[3] += d;
 }
 
-void
-md5_init(md5_state_t *pms)
+void md5_init(md5_state_t *pms)
 {
     pms->count[0] = pms->count[1] = 0;
     pms->abcd[0] = 0x67452301;
@@ -320,8 +319,7 @@ md5_init(md5_state_t *pms)
     pms->abcd[3] = 0x10325476;
 }
 
-void
-md5_append(md5_state_t *pms, const md5_byte_t *data, unsigned int nbytes)
+void md5_append(md5_state_t *pms, const md5_byte_t *data, unsigned int nbytes)
 {
     const md5_byte_t *p = data;
     unsigned int left = nbytes;

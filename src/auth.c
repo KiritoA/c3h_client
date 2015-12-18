@@ -32,6 +32,7 @@
 #include "md5.h"
 #include "defs.h"
 #include "adapter.h"
+//#include "h3c_crypto.h"
 
 // 子函数声明
 static void HandleEAPRequest(int type, const uint8_t request[]);
@@ -80,6 +81,9 @@ const int DefaultTimeout = 1500; //设置接收超时参数，单位ms
 uint8_t local_ip[4] = { 0, 0, 0, 0 };	// ip address
 uint8_t local_mac[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
+uint8_t AES_MD5req[32];
+uint8_t AES_MD5rsp[32];
+
 eth_header_t eth_header; // ethernet header
 
 /* 认证信息 */
@@ -91,6 +95,7 @@ const char *deviceName = NULL;
 pcap_t *adhandle = NULL; // adapter handle
 
 int authProgress = AUTH_PROGRESS_DISCONNECT;
+bool success = false;//认证成功标志位
 
 void InitDevice(const char *DeviceName)
 {
@@ -117,8 +122,8 @@ void CloseDevice()
 	}
 }
 
-bool flag = false;
-uint32_t count = 0;
+bool jb_flag = false;
+uint32_t jb_count = 0;
 
 /**
  * 函数：Authentication()
@@ -136,9 +141,9 @@ int Authentication(const char *UserName, const char *Password)
  	password = Password;
 
 	authProgress = AUTH_PROGRESS_START;
-	flag = false;
-	count = 0;
-
+	jb_flag = false;
+	jb_count = 0;
+	success = false;
 	/*
 	* 设置过滤器：
 	* 初始情况下只捕获发往本机的802.1X认证会话，不接收多播信息（避免误捕获其他客户端发出的多播信息）
@@ -180,12 +185,13 @@ int Authentication(const char *UserName, const char *Password)
 			//重试达到最大次数后退出
 			if (retry++ == 5)
 			{
-				PRINTERR("\n[ERROR] C3H Client: Server did not respond\n");
+				PRINT("\n");
+				PRINTERR("C3H Client[ERROR]: Server did not respond\n");
 				return ERR_NOT_RESPOND;
 			}
 			// 延时后重试
 			sleep(3);
-			PRINTMSG(".");
+			PRINT(".");
 			SendStartPkt();
 			// NOTE: 这里没有检查网线是否接触不良或已被拔下
 		}
@@ -224,9 +230,13 @@ int Authentication(const char *UserName, const char *Password)
 void LogOff()
 {
 	if (authProgress == AUTH_PROGRESS_CONNECTED)
+	{
 		PRINTMSG( "C3H Client: Log off.\n");
+	}
 	else
+	{
 		PRINTMSG( "C3H Client: Cancel.\n");
+	}
 
 	SendLogOffPkt(adhandle, local_mac);
 	authProgress = AUTH_PROGRESS_DISCONNECT;
@@ -235,7 +245,7 @@ void LogOff()
 int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *packet)
 {
 	int retcode = 0;
-
+	int i;
 	const eap_header_t *eapHeader = (eap_header_t*)(packet + ETH_LEN);
 
 	uint8_t errtype = packet[22];
@@ -252,6 +262,8 @@ int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *p
 		if (authProgress == AUTH_PROGRESS_INENTITY || authProgress == AUTH_PROGRESS_PASSWORD)
 		{
 			authProgress = AUTH_PROGRESS_CONNECTED;
+			success = true;
+
 			PRINTMSG("C3H Client: You have passed the identity authentication\n");
 			// 刷新IP地址
 			PRINTMSG("C3H Client: Obtaining IP address...\n");
@@ -263,46 +275,52 @@ int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *p
 	case FAILURE:
 		authProgress = AUTH_PROGRESS_DISCONNECT;
 		// 处理认证失败信息
-
-		PRINTERR("[ERROR] C3H Client: Failure.\n");
+		
+		PRINTERR("C3H Client[ERROR]: Failure.(");
 		if (errtype == 0x09 && msgsize > 0)
-		{	// 输出错误提示消息
-			PRINTERR("%s\n", msg);
+		{
+			// 输出错误提示消息
+			for ( i = 0; i < msgsize; i++)
+				PUTCHAR(*(msg + i));
+			PRINTERR(")\n");
 			// 已知的几种错误如下
-			// E2531:用户名不存在
-			// E2535:Service is paused
-			// E2542:该用户帐号已经在别处登录
-			// E2547:接入时段限制
-			// E2553:密码错误
-			// E2602:认证会话不存在
-			// E3137:客户端版本号无效
-			// fosu
 			// E63100:客户端版本号无效
 			// E63013:用户被列入黑名单
+			// E63015:用户已过期
 			// E63027:接入时段限制
+
 			if (strncmp(msg, "E63100", 6) == 0)
 				return ERR_AUTH_INVALID_VERSION;
 			else if (strncmp(msg, "E63027", 6) == 0)
 				return ERR_AUTH_TIME_LIMIT;
+			else if (strncmp(msg, "E63025", 6) == 0)
+				return ERR_AUTH_MAC_FAILED;
 			else
 				return ERR_AUTH_FAILED;
 		}
-		else if (errtype == 0x08) // 可能网络无流量时服务器结束此次802.1X认证会话
-		{	// 遇此情况客户端立刻发起新的认证会话
-			//goto START_AUTHENTICATION; 
-			return ERR_UNKNOWN_FAILED;
-		}
 		else
 		{
-			PRINTERR("errtype=0x%02x\n", errtype);
-			return ERR_UNKNOWN_FAILED;
+			PRINTERR("errtype:0x%02x\n", errtype);
+			if (success)
+				//若为连接成功后断线，返回另一个标志
+				return ERR_FAILED_AFTER_SUCCESS;
+			else
+				return ERR_UNKNOWN_FAILED;
 		}
 
-		retcode = errtype;
 		break;
 	case H3CDATA:
 		PRINTMSG("[%d] Server: (H3C data)\n", eapHeader->id);
 		// TODO: 需要解出华为自定义数据包内容，该部分内容与心跳包数据有关
+
+		if (packet[26] == 0x35)
+		{
+			for ( i = 0; i < 32; i++)
+			{
+				AES_MD5req[i] = packet[i + 27];
+			}
+			//h3c_AES_MD5_decryption(AES_MD5data, AES_MD5req);
+		}
 		break;
 	default:
 		break;
@@ -325,7 +343,7 @@ static void HandleEAPRequest(int type, const uint8_t request[])
 
 		if (authProgress == AUTH_PROGRESS_INENTITY || authProgress == AUTH_PROGRESS_CONNECTED)
 		{
-			if (!flag)
+			if (!jb_flag)
 			{
 				SendResponseIdentity(request);
 				PRINTDEBUG("[%d] Client: Response Identity.\n", (EAP_ID)request[19]);
@@ -351,9 +369,9 @@ static void HandleEAPRequest(int type, const uint8_t request[])
 			SendResponseSecurity(request);
 			PRINTDEBUG("[%d] Client: Response Security.\n", (EAP_ID)request[19]);
 			//jailbreak-test:从收到此心跳报文开始进入jailbreak模式
-			if (!flag)
+			if (!jb_flag)
 			{
-				flag = true;
+				jb_flag = true;
 				SendStartPkt();
 			}
 		}
@@ -383,12 +401,12 @@ static void HandleEAPRequest(int type, const uint8_t request[])
 		break;
 	}
 
-	if (flag)
+	if (jb_flag)
 	{
 		//隔一段时间重新发起一次认证以保持不断线
-		if (++count == 4)
+		if (++jb_count == 4)
 		{
-			count = 0;
+			jb_count = 0;
 			SendStartPkt();
 		}
 	}
@@ -444,7 +462,7 @@ static void SendEAPOL(uint8_t type)
 
 	memset(packet + 18, 0x00, (64 - ETH_LEN - EAPOL_HDR_LEN));	//剩余字节填充0
 
-	if (flag)
+	if (jb_flag)
 	{
 		memcpy(packet, MultcastAddr, 6);
 	}
@@ -478,15 +496,6 @@ static void SendResponseNotification(const uint8_t request[])
 	response[i++] = 0x16;   // lenth
 	FillClientVersionArea(response + i);
 	i += 20;
-
-	//2015.4.13 佛大客户端修订,不需要系统版本号
-	//最后2+20字节存储加密后的Windows操作系统版本号
-	/*
-		response[i++] = 0x02; // type 0x02
-		response[i++] = 22;   // length
-		FillWindowsVersionArea(response+i);
-		i += 20;*/
-	// }
 
 	SendEAPPacket((EAP_Code)RESPONSE, (EAP_Type)NOTIFICATION, request[19], response, i);
 }

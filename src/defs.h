@@ -19,13 +19,25 @@
 #endif
 
 #ifdef WIN32
+#define PRINT(...) printf(__VA_ARGS__)
 #define PRINTMSG(...) printf(__VA_ARGS__)
+#define PRINTERR(...) fprintf(stderr, __VA_ARGS__)
 #else
-#define PRINTMSG(...) fprintf(stderr, __VA_ARGS__)
+#include <syslog.h>
+#define PRINTMSG(format, ...) { \
+			printf(format, ## __VA_ARGS__); \
+			syslog(LOG_USER | LOG_INFO, format, ##__VA_ARGS__);  }
+
+#define PRINTERR(format, ...) { \
+			printf(format, ## __VA_ARGS__); \
+			syslog(LOG_USER | LOG_ERR, format, ##__VA_ARGS__);  }
+
+#define PRINT(...) printf(__VA_ARGS__)
+#define LOGINFO(...) syslog(LOG_USER | LOG_INFO, __VA_ARGS__)
+#define LOGERR(...) syslog(LOG_USER | LOG_ERR, __VA_ARGS__)
 #endif
 
-#define PRINTERR(...) fprintf(stderr, __VA_ARGS__)
-
+#define PUTCHAR(x) fputc(x, stderr)
 #ifdef WIN32
 #define sleep(x)	Sleep(x*1000)
 #endif
