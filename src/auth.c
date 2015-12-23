@@ -163,7 +163,7 @@ int Authentication(const char *UserName, const char *Password)
 
 	/* 主动发起认证会话 */
 	SendStartPkt();
-	PRINTMSG( "C3H Client: Connecting to the network ...\n");
+	PRINTMSG( "C3H Client: Connecting to the network ...");
 
 	int retcode = 0;
 	int retry = 0;
@@ -178,6 +178,7 @@ int Authentication(const char *UserName, const char *Password)
 		if (retcode == 1 && (EAP_Code)captured[18] == REQUEST)
 		{
 			serverFound = true;
+			PRINT("\n");
 			PRINTMSG("C3H Client: Server responded\n");
 		}
 		else
@@ -276,13 +277,14 @@ int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *p
 		authProgress = AUTH_PROGRESS_DISCONNECT;
 		// 处理认证失败信息
 		
-		PRINTERR("C3H Client[ERROR]: Failure.(");
 		if (errtype == 0x09 && msgsize > 0)
 		{
-			// 输出错误提示消息
-			for ( i = 0; i < msgsize; i++)
-				PUTCHAR(*(msg + i));
-			PRINTERR(")\n");
+			char* errMsg = (char*)malloc(msgsize + 2);
+			strncpy(errMsg, msg, msgsize);
+			errMsg[msgsize] = '\n';
+			errMsg[msgsize+1] = '\0';
+			PRINTERR(errMsg);
+			free(errMsg);
 			// 已知的几种错误如下
 			// E63100:客户端版本号无效
 			// E63013:用户被列入黑名单
@@ -300,7 +302,7 @@ int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *p
 		}
 		else
 		{
-			PRINTERR("errtype:0x%02x\n", errtype);
+			PRINTERR("C3H Client[ERROR]: Unexpected failure(Code:0x%02x)\n", errtype);
 			if (success)
 				//若为连接成功后断线，返回另一个标志
 				return ERR_FAILED_AFTER_SUCCESS;

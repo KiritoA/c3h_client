@@ -12,7 +12,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <time.h>
-#include <strings.h>
+#include <string.h>
 
 #ifndef WIN32
 #include <unistd.h>
@@ -23,7 +23,7 @@
 #include "adapter.h"
 
 #define ARG_NUMBER	4
-#define ABOUT_INFO_STRING "C3H Client 15.12\n"
+#define ABOUT_INFO_STRING "C3H Client 15.12j\n"
 
 void signal_interrupted (int signo)
 {
