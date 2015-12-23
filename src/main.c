@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <time.h>
+#include <strings.h>
 
 #ifndef WIN32
 #include <unistd.h>
@@ -22,7 +23,7 @@
 #include "adapter.h"
 
 #define ARG_NUMBER	4
-#define ABOUT_INFO_STRING "C3H Client v1.3.0\n"
+#define ABOUT_INFO_STRING "C3H Client 15.12\n"
 
 void signal_interrupted (int signo)
 {
@@ -78,7 +79,9 @@ int main(int argc, char *argv[])
 	DeviceName = argv[3]; // 允许从命令行指定设备名
 	Reconnect = argv[4];//重连次数
 
-	for (int i = 0; i < (int)strlen(Reconnect); i++)
+	int i;
+
+	for (i = 0; i < (int)strlen(Reconnect); i++)
 	{
 		if (Reconnect[i]<'0' || Reconnect[i]>'9')
 		{
@@ -94,6 +97,7 @@ int main(int argc, char *argv[])
 
 	PRINTMSG(ABOUT_INFO_STRING);
 
+	int overheat = 0;
 	int retry = 0;
 	int success = 0;
 	int failure = 0;
@@ -107,9 +111,10 @@ int main(int argc, char *argv[])
 		lastAuthTime = time(NULL);
 		/* 调用子函数完成802.1X认证 */
 		ret = Authentication(UserName, Password);
-		if (ret == ERR_NOT_RESPOND || ret == ERR_AUTH_MAC_FAILED)
+
+		if (ret == ERR_AUTH_MAC_FAILED)
 		{
-			PRINTERR("C3H Client: Connection Failed. Code:%d\n", ret);
+			PRINTERR("C3H Client: Connection Failed(Code:%d).\n", ret);
 			break;
 		}
 		else if (ret == 0 || ret == ERR_AUTH_TIME_LIMIT)
@@ -119,6 +124,8 @@ int main(int argc, char *argv[])
 		}
 		else
 		{
+			PRINTERR("C3H Client: Connection Failed(Code:%d).\n", ret);
+
 			if (ret == ERR_FAILED_AFTER_SUCCESS)
 			{
 				reconnect = atoi(Reconnect);//重置重连计数
@@ -128,11 +135,21 @@ int main(int argc, char *argv[])
 			else
 			{
 				failure++;
-				retry++;
 			}
-			if ((time(NULL) - lastAuthTime) < 15)
-				sleep(10);
-			sleep(5);
+
+			if(reconnect == 0)
+				break;
+
+			if ((time(NULL) - lastAuthTime) < 20 && ++overheat > 3)
+			{
+					PRINTMSG("C3H Client: Wait for 20s...\n");
+					sleep(20);
+					overheat = 0;
+			}
+			else
+				sleep(5);
+
+			retry++;
 			PRINTMSG("C3H Client: Reconnecting...[S:%d F:%d R:%d]\n", success, failure, retry);
 		}
 	} while (reconnect--);

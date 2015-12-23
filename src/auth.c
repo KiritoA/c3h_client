@@ -225,9 +225,13 @@ int Authentication(const char *UserName, const char *Password)
 void LogOff()
 {
 	if (authProgress == AUTH_PROGRESS_CONNECTED)
+	{
 		PRINTMSG( "C3H Client: Log off.\n");
+	}
 	else
+	{
 		PRINTMSG( "C3H Client: Cancel.\n");
+	}
 
 	SendLogOffPkt(adhandle, local_mac);
 	authProgress = AUTH_PROGRESS_DISCONNECT;
@@ -267,38 +271,36 @@ int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *p
 		authProgress = AUTH_PROGRESS_DISCONNECT;
 		// 处理认证失败信息
 		
-		PRINTERR("C3H Client[ERROR]: Failure.\n");
+		PRINTERR("C3H Client[ERROR]: Failure.(");
 		if (errtype == 0x09 && msgsize > 0)
-		{	// 输出错误提示消息
+		{
+			// 输出错误提示消息
 			for ( i = 0; i < msgsize; i++)
 				PUTCHAR(*(msg + i));
-			PRINTERR("\n");
+			PRINTERR(")\n");
 			// 已知的几种错误如下
 			// E63100:客户端版本号无效
 			// E63013:用户被列入黑名单
 			// E63015:用户已过期
 			// E63027:接入时段限制
-			if (success)
-			{
-				//若为连接成功后断线，返回另一个标志
-				return ERR_FAILED_AFTER_SUCCESS;
-			}
+
+			if (strncmp(msg, "E63100", 6) == 0)
+				return ERR_AUTH_INVALID_VERSION;
+			else if (strncmp(msg, "E63027", 6) == 0)
+				return ERR_AUTH_TIME_LIMIT;
+			else if (strncmp(msg, "E63025", 6) == 0)
+				return ERR_AUTH_MAC_FAILED;
 			else
-			{
-				if (strncmp(msg, "E63100", 6) == 0)
-					return ERR_AUTH_INVALID_VERSION;
-				else if (strncmp(msg, "E63027", 6) == 0)
-					return ERR_AUTH_TIME_LIMIT;
-				else if (strncmp(msg, "E63025", 6) == 0)
-					return ERR_AUTH_MAC_FAILED;
-				else
-					return ERR_AUTH_FAILED;
-			}
+				return ERR_AUTH_FAILED;
 		}
 		else
 		{
 			PRINTERR("errtype:0x%02x\n", errtype);
-			return ERR_UNKNOWN_FAILED;
+			if (success)
+				//若为连接成功后断线，返回另一个标志
+				return ERR_FAILED_AFTER_SUCCESS;
+			else
+				return ERR_UNKNOWN_FAILED;
 		}
 
 		break;
