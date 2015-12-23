@@ -12,7 +12,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <time.h>
-#include <strings.h>
+#include <string.h>
 
 #ifndef WIN32
 #include <unistd.h>
