@@ -20,16 +20,16 @@ License
 * 集成MD5算法，不需要再依赖openssl
 * 增加断线重连机制
 * 测试环境为佛大
-* 暂时未集成makefile，如有需要可修改使用njit8021xclient项目相关文件
+* 集成makefile(BETA)
 
 依赖的开发包
 --------
 * Linux/openWRT: libpcap
 * Windows: WinPcap(WpdPack)
 
-测试日志
+存在问题
 -----
-2015.4.19：佛大校园网测试：目前可成功认证，但校园网在心跳报文加入了某种检测导致心跳报文阶段检测不通过。
+2015.4.19：佛大校园网测试可成功认证，但校园网在心跳报文加入了某种检测导致心跳报文阶段检测不通过。
 在auth.c中SendResponseSecurity()函数中
 ```
 response[i++] = 0x00;	// 上报是否使用代理
@@ -37,19 +37,19 @@ response[i++] = 0x00;	// 上报是否使用代理
 此行代码取消注释后，不会立即强制下线，但7分钟后仍会断开（服务器收不到正确报文而强制下线），重新连接不会被拉黑。
 非佛大环境可尝试直接使用该客户端。
 
+2015.12.23：据反映部分宿舍楼可以使用此客户端而不会加入黑名单。
+
 用法
 -----
 ```
-c3h-client  [username] [password] [adapter]
-```
-Linux/openWRT环境下可以不输入[adapter]参数，则默认设备为eth0
-```
-Usage:
-c3h-client	[Username]	Your Username.
-			[password]	Your Password.
-			[adapter]	Specify ethernet adapter to use.
-						Adapter in Linux is eth0,eth1...etc
-						Adapter in Windows starts with '\Device\NPF_'
+c3h-client  [username] [password] [adapter] [reconnect]
+
+[Username]	用户名
+[password]	密码
+[adapter]	认证网卡。
+			Linux中网卡为eth0,eth1...
+			Windows中网卡以"\Device\NPF_"开头
+[reconnect] 认证失败后重连次数。参数为0时禁用重连功能。
 ```
 
 参考文献
