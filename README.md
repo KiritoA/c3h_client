@@ -1,8 +1,12 @@
-c3h-client分支项目
+c3h-client
 ===========
-该项目是njit8021xclient的fork，是该项目的独立分支。
+该项目代码源于以下项目：
 
-由于对njit8021xclient版本的结构和内容作出不少修改，在之前c3h-client是一个独立项目，现在决定直接归入njit8021xclient的fork项目并独立出一个新分支。
+njit8021xclient:https://github.com/liuqun/njit8021xclient
+
+以及bitdust的fork:https://github.com/bitdust/njit8021xclient
+
+由于对njit8021xclient版本的结构和内容作出不少修改，因此决定从该项目分离并建立一个新项目
 
 License
 ---------
@@ -30,16 +34,14 @@ jailbreak-test
 用法
 -----
 ```
-c3h-client  [username] [password] [adapter]
-```
-Linux/openWRT环境下可以不输入[adapter]参数，则默认设备为eth0
-```
-Usage:
-c3h-client	[Username]	Your Username.
-			[password]	Your Password.
-			[adapter]	Specify ethernet adapter to use.
-						Adapter in Linux is eth0,eth1...etc
-						Adapter in Windows starts with '\Device\NPF_'
+c3h-client  [username] [password] [adapter] [reconnect]
+
+[Username]	用户名
+[password]	密码
+[adapter]	认证网卡。
+			Linux中网卡为eth0,eth1...
+			Windows中网卡以"\Device\NPF_"开头
+[reconnect] 认证失败后重连次数。参数为0时禁用重连功能。
 ```
 
 参考文献
