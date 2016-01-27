@@ -1,5 +1,10 @@
 c3h-client
 ===========
+
+**增加和改写了适用于OpenWRT SDK环境的Makefile文件，代码未做修改，感谢KiritoA的付出与努力**
+
+以下为原项目说明：
+
 该项目代码源于以下项目：
 
 njit8021xclient:https://github.com/liuqun/njit8021xclient
