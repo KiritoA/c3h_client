@@ -5,7 +5,7 @@ c3h-client
 
 编译相关的说明文件请点击[BUILD.md](https://github.com/mcdona1d/c3h-client/blob/master/BUILD.md)查看
 
-以下为原项目说明：
+以下为原项目说明
 
 -----
 
