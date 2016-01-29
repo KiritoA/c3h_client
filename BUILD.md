@@ -36,7 +36,7 @@ package
 │       └── md5.h
 └── Makefile
 ```
-此时共有三个Makefile文件，其中package中的Makefile为SDK自带，不需要改动，将吃h-client文件夹直接置入package文件夹中即可
+此时共有三个Makefile文件，其中package中的Makefile为SDK自带，不需要改动，将c3h-client文件夹直接置入package文件夹中即可
 
 ### 配置编译变量
 在SDK的根目录中执行
@@ -75,7 +75,7 @@ http://downloads.openwrt.org/barrier_breaker/14.07/ramips/mt7620a/packages/base/
 安装过程及截图如下图所示
 ![Alt text](https://github.com/mcdona1d/ImageCache/raw/master/c3h-client/1454036761908.png)
 
-如果能正常输出Usage信息及Adapters available可以列出当前网卡，则安装成功
+如果能正常输出Usage信息及Adapters available可以列出当前可用网卡，则安装成功
 
 
 ## Q&A
