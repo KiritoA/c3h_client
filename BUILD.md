@@ -64,6 +64,18 @@ make -j1 V=s
 ```
 ## 安装
 
+### 配置系统兼容性
+
+对于ramips芯片的机器，比如我的Newifi Y1和HG255d，安装前需要先将以下四行添加到`/etc/opkg.conf`中，否则会出现`Unknown package 'c3h-client'`的兼容性问题
+```
+arch all 100  
+arch ralink 200  
+arch ramips 300  
+arch ramips_24kec 400  
+```
+
+### 正式安装
+
 本程序在我所使用的PandoraBox 基于14.09源码的固件中，需要依赖1.5.3-1版本的libpcap：`libpcap_1.5.3-1_ramips_24kec.ipk`
 此文件可以在与SDK下载路径相同的目录中的`packages/base/`中下载到，比如我所使用的mt7620a芯片所适用的
 ```
