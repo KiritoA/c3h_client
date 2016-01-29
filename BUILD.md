@@ -1,5 +1,6 @@
 # BUILD
 
+> 使用OpenWRT SDK编译适用于路由器的ipk文件过程<br>
 > 我使用的编译环境：Ubuntu 15.10 x64
 
 
@@ -42,12 +43,15 @@ package
 ``` bash
 make menuconfig
 ```
+![Alt text](https://github.com/mcdona1d/ImageCache/raw/master/c3h-client/1454035791140.png)
 c3h-client放置正确则会出现Network选项，进入Network选项，摁M确定编译ipk文件（默认可能已经就是M）如图：
+![Alt text](https://github.com/mcdona1d/ImageCache/raw/master/c3h-client/1454035864792.png)
 选择SAVE，OK。随后EXIT即可完成编译配置
 
 ### 正式编译
 
 在SDK根目录执行`make`命令，
+![Alt text](https://github.com/mcdona1d/ImageCache/raw/master/c3h-client/1454035986275.png)
 如果没有报错信息出现，则编译成功，编译成功的ipk会出现在SDK目录下的bin目录中，根据你的SDK不同路径也会略有不同，比如我的文件在
 ``` bash
 ./bin/ramips/packages/base/c3h-client_1.0.0-1_ramips_24kec.ipk
@@ -69,6 +73,7 @@ http://downloads.openwrt.org/barrier_breaker/14.07/ramips/mt7620a/packages/base/
 
 安装时需要先安装`libpcap`随后安装`c3h-client`
 安装过程及截图如下图所示
+![Alt text](https://github.com/mcdona1d/ImageCache/raw/master/c3h-client/1454036761908.png)
 
 如果能正常输出Usage信息及Adapters available可以列出当前网卡，则安装成功
 
