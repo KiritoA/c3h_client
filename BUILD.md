@@ -79,8 +79,8 @@ http://downloads.openwrt.org/barrier_breaker/14.07/ramips/mt7620a/packages/base/
 
 
 ## Q&A
-Q : 执行`c3h-client`报错`c3h-client: can't load library 'libc.so'`
+Q : 执行`c3h-client`报错`c3h-client: can't load library 'libc.so'`<br>
 A : 安装了1.7.4版本的libpcap，版本过高，请使用1.5.3版本
 
-Q : 执行`c3h-client`报错`c3h-client: can't load library 'libpcap.so.1.3'`
+Q : 执行`c3h-client`报错`c3h-client: can't load library 'libpcap.so.1.3'`<br>
 A : 安装了1.1.1版本的libpcap，版本过低，请使用1.5.3版本

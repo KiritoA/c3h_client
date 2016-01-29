@@ -3,7 +3,11 @@ c3h-client
 
 **增加和改写了适用于OpenWRT SDK环境的Makefile文件，代码未做修改，感谢KiritoA的付出与努力**
 
+编译相关的说明文件请点击[BUILD.md](https://github.com/mcdona1d/c3h-client/blob/master/BUILD.md)查看
+
 以下为原项目说明：
+
+-----
 
 该项目代码源于以下项目：
 
