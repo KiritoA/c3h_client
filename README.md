@@ -8,6 +8,8 @@ njit8021xclient:https://github.com/liuqun/njit8021xclient
 
 由于项目根据njit8021xclient重构了大部分程序代码，因此决定从该项目分离并建立一个新项目
 
+**本项目仅作为 H3C iNode 在 Linux 平台下的解决方案，如果你需要天翼校园客户端在 Linux 平台下的解决方案，请移步：https://github.com/YianAndCode/f-surfing*
+
 License
 ---------
 本项目继承并遵循GPLv3协议
