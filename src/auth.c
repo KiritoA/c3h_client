@@ -278,7 +278,7 @@ int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *p
 			strncpy(errMsg, msg, msgsize);
 			errMsg[msgsize] = '\n';
 			errMsg[msgsize+1] = '\0';
-			PRINTERR(errMsg);
+			PRINTERR("%s\n", errMsg);
 			free(errMsg);
 			// 已知的几种错误如下
 			// E63100:客户端版本号无效
