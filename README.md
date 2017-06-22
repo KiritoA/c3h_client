@@ -1,5 +1,14 @@
-c3h-client
+c3h-client(0-day edition)
 ===========
+
+
+
+> **当前分支为 0-day 版，如果需要普通版（旧版），请切换至 `normal` 分支**  
+>
+> **0-day 版已稳定连续运行两年*
+
+
+
 该项目代码源于以下项目：
 
 njit8021xclient:https://github.com/liuqun/njit8021xclient
@@ -17,6 +26,7 @@ License
 概述
 -----
 * 本项目重构了njit8021xclient大部分代码，优化程序框架结构，增强可读性
+* 本项目利用了 H3C 认证的 0-day 漏洞（由 [@KiritoA](https://github.com/KiritoA) 及其舍友在无意中发现），可以解决部分高校出现 `0x0A` 失败的情况，以及可以实现不被服务端拉黑
 * 测试版本：iNode V7.00-0102
 * 测试环境为佛大
 * 模仿官方客户端响应EAP报文的程序逻辑
@@ -25,10 +35,20 @@ License
 * 增加断线重连机制
 * 集成makefile(BETA)
 
+## 0-day 版原理
+
+在收到 `SECURITY `类型的请求后，首先给服务器一个无效 `SECURITY` 回应，然后立即重新发起认证（EAPOL，Start），之后服务器按正常流程会请求`Identify`，此时开始回应头部正确，内容无效的报文，服务器由于一直未收到正确回应报文，会再次请求 `Identify`，同样回应无效报文，如此循环就可以不掉线且不被拉黑
+
 依赖的开发包
 --------
 * Linux/openWRT: libpcap
 * Windows: WinPcap(WpdPack)
+
+## 编译
+
+Linux 平台下可以直接在 `src/` 目录下执行 `make` 进行编译；
+
+OpenWrt 可以使用由 [@mcdona1d](https://github.com/mcdona1d/c3h-client) 修改的 `makefile` 进行交叉编译
 
 研究进度
 -----
