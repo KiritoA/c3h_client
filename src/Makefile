@@ -1,42 +1,17 @@
-TARGET = c3h-client
-BIN_DIR = /usr/sbin/
-INCLUDES = 
-LIBS = -lpcap
+c3h-client : auth.o main.o md5.o adapter.o
+	$(CC) $(LDFLAGS) auth.o main.o md5.o adapter.o -lpcap -o c3h-client
 
-UP_CC := gcc
-RM := rm -rf
+auth.o : auth.c
+	$(CC) $(CFLAGS) -DNDEBUG -Wall -g -O2 -c auth.c
 
-C_SOURCES       = $(wildcard *.c)
-C_OBJS = $(patsubst %.c, %.o, $(C_SOURCES))
+main.o : main.c
+	$(CC) $(CFLAGS) -DNDEBUG -Wall -g -O2 -c main.c
 
-CFLAGS = -DNDEBUG -Wall -g
-CFLAGS += -O2
-# ------------  generate the names of the object files  ------------------------
-OBJECTS         = $(addsuffix .o,$(BASENAMES))
+md5.o : md5.c
+	$(CC) $(CFLAGS) -DNDEBUG -Wall -g -O2 -c md5.c
 
-# ------------  generate the names of the hidden prerequisite files  -----------
-PREREQUISITES   = $(addprefix .,$(addsuffix .d,$(BASENAMES)))
+adapter.o : adapter.c
+	$(CC) $(CFLAGS) -DNDEBUG -Wall -g -O2 -c adapter.c
 
-# ------------  make the executable (the default goal)  ------------------------
-%.o:%.c
-	$(UP_CC) -c $(CFLAGS) $<$ $(CCFLAGS)
-
-$(TARGET): $(CPP_OBJS) $(C_OBJS)
-	$(CXX)$(LINKFLAGS) -o $(TARGET) $^ $(LIBS)
-
-all:$(TARGET)
-
-clean:
-	$(RM) $(CPP_OBJS) $(C_OBJS)
-	$(RM) $(TARGET)
-
-install: $(TARGET)
-	cp $(TARGET) $(BIN_DIR)
-
-uninstall:
-	rm -f $(BIN_DIR)/$(TARGET)
-
-rebuild: clean all
-
-# ==============================================================================
-# vim: set tabstop=2: set shiftwidth=2:
+clean :
+	rm *.o c3h-client
