@@ -42,6 +42,7 @@ static void SendEAPPacket(uint8_t code, uint8_t type, uint8_t id, uint8_t *extPk
 static void SendStartPkt();
 static void SendLogOffPkt();
 static void SendResponseIdentity(const uint8_t request[]);
+static void SendResponseIdencifyFake(const uint8_t request[]);
 static void SendResponseMD5(const uint8_t request[]);
 static void SendResponseSecurity(const uint8_t request[]);
 static void SendResponseNotification(const uint8_t request[]);
@@ -120,6 +121,8 @@ void CloseDevice()
 	}
 }
 
+bool jb_flag = false;
+uint32_t jb_count = 0;
 
 /**
  * 函数：Authentication()
@@ -137,7 +140,8 @@ int Authentication(const char *UserName, const char *Password)
  	password = Password;
 
 	authProgress = AUTH_PROGRESS_START;
-
+	jb_flag = false;
+	jb_count = 0;
 	success = false;
 	/*
 	* 设置过滤器：
@@ -278,7 +282,7 @@ int got_packet(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *p
 			strncpy(errMsg, msg, msgsize);
 			errMsg[msgsize] = '\n';
 			errMsg[msgsize+1] = '\0';
-			PRINTERR(errMsg);
+			PRINTERR("%s\n", errMsg);
 			free(errMsg);
 			// 已知的几种错误如下
 			// E63100:客户端版本号无效
@@ -340,8 +344,16 @@ static void HandleEAPRequest(int type, const uint8_t request[])
 
 		if (authProgress == AUTH_PROGRESS_INENTITY || authProgress == AUTH_PROGRESS_CONNECTED)
 		{
-			SendResponseIdentity(request);
-			PRINTDEBUG("[%d] Client: Response Identity.\n", (EAP_ID)request[19]);
+			if (!jb_flag)
+			{
+				SendResponseIdentity(request);
+				PRINTDEBUG("[%d] Client: Response Identity.\n", (EAP_ID)request[19]);
+			}
+			else
+			{
+				SendResponseIdencifyFake(request);
+				PRINTDEBUG("[%d] Client: Response Identity*\n", (EAP_ID)request[19]);
+			}
 		}
 		break;
 	case SECURITY:
@@ -357,6 +369,12 @@ static void HandleEAPRequest(int type, const uint8_t request[])
 		{
 			SendResponseSecurity(request);
 			PRINTDEBUG("[%d] Client: Response Security.\n", (EAP_ID)request[19]);
+			//jailbreak-test:从收到此心跳报文开始进入jailbreak模式
+			if (!jb_flag)
+			{
+				jb_flag = true;
+				SendStartPkt();
+			}
 		}
 
 		break;
@@ -382,6 +400,16 @@ static void HandleEAPRequest(int type, const uint8_t request[])
 		break;
 	default:
 		break;
+	}
+
+	if (jb_flag)
+	{
+		//隔一段时间重新发起一次认证以保持不断线
+		if (++jb_count == 4)
+		{
+			jb_count = 0;
+			SendStartPkt();
+		}
 	}
 }
 
@@ -435,6 +463,10 @@ static void SendEAPOL(uint8_t type)
 
 	memset(packet + 18, 0x00, (64 - ETH_LEN - EAPOL_HDR_LEN));	//剩余字节填充0
 
+	if (jb_flag)
+	{
+		memcpy(packet, MultcastAddr, 6);
+	}
 
 	// 发包
 	pcap_sendpacket(adhandle, packet, sizeof(packet));
@@ -481,7 +513,7 @@ static void SendResponseSecurity(const uint8_t request[])
 
 	// Extensible Authentication Protocol
 	// Type-Data
-	response[i++] = 0x00;	// 上报是否使用代理
+	//response[i++] = 0x00;	// 上报是否使用代理，取消此处注释会导致马上断线拉黑
 	//暂时未能解密该部分内容，只作填充0处理
 	/*
 	response[i++] = 0x16;
@@ -552,6 +584,50 @@ static void SendResponseIdentity(const uint8_t request[])
 
 	SendEAPPacket((EAP_Code)RESPONSE, (EAP_Type)IDENTITY, request[19], response, i);
 
+}
+
+//发送Header正确内容无效的心跳报文，令服务器直接忽略该报文数据
+static void SendResponseIdencifyFake(const uint8_t request[])
+{
+	uint8_t response[128];
+	size_t i;
+	uint16_t eaplen;
+	size_t usernamelen;
+
+	assert((EAP_Code)request[18] == REQUEST);
+
+	// Fill Ethernet header
+	memcpy(response, &eth_header, ETH_LEN);
+
+	// 802,1X Authentication
+	response[14] = 0x01;	// 802.1X Version 1
+	response[15] = 0x00;	// Type=0 (EAP Packet)
+	//response[16~17]留空	// Length
+
+	// Extensible Authentication Protocol
+	response[18] = (EAP_Code)RESPONSE;	// Code
+	response[19] = request[19];		// ID
+	//response[20~21]留空			// Length
+	response[22] = (EAP_Type)IDENTITY;	// Type
+	// Type-Data
+	i = 23;
+
+	response[i++] = '\\';
+	usernamelen = strlen(username); //末尾添加用户名
+	memset(response + i, 0x00, usernamelen);
+	//memcpy(response + i, username, usernamelen);
+	i += usernamelen;
+
+	assert(i <= sizeof(response));
+
+	// 补填前面留空的两处Length
+	eaplen = htons(0x3E);
+	memcpy(response + 16, &eaplen, sizeof(eaplen));
+	eaplen = htons(0x10);
+	memcpy(response + 20, &eaplen, sizeof(eaplen));
+
+	// 发送
+	pcap_sendpacket(adhandle, response, i);
 }
 
 static void SendResponseMD5(const uint8_t request[])

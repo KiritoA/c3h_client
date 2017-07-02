@@ -140,14 +140,13 @@ int main(int argc, char *argv[])
 			if(reconnect == 0)
 				break;
 
-			if ((time(NULL) - lastAuthTime) < 20 && ++overheat > 3)
+			time_t timeToWait = time(NULL) - lastAuthTime;
+			if (timeToWait < 20 && ++overheat > 3)
 			{
-					PRINTMSG("C3H Client: Wait for 20s...\n");
-					sleep(20);
+					PRINTMSG("C3H Client: Wait for %ds...\n", (int)timeToWait);
+					sleep(20-timeToWait);
 					overheat = 0;
 			}
-			else
-				sleep(5);
 
 			retry++;
 			PRINTMSG("C3H Client: Reconnecting...[S:%d F:%d R:%d]\n", success, failure, retry);
