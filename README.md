@@ -44,7 +44,7 @@ License
 
 Linux 平台下可以直接在 `src/` 目录下执行 `make` 进行编译；
 
-OpenWrt 可以使用由 [@mcdona1d](https://github.com/mcdona1d/c3h-client) 修改的 `makefile` 进行交叉编译
+OpenWrt 可以使用`openwrt`分支的`makefile`进行交叉编译，该`makefile`由 [@mcdona1d](https://github.com/mcdona1d/c3h-client) 提供。
 
 研究进度
 -----
