@@ -1,17 +1,41 @@
-c3h-client : auth.o main.o md5.o adapter.o
-	$(CC) $(LDFLAGS) auth.o main.o md5.o adapter.o -lpcap -o c3h-client
+# 
+# Copyright (C) 2006-2008 OpenWrt.org
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
 
-auth.o : auth.c
-	$(CC) $(CFLAGS) -DNDEBUG -Wall -g -O2 -c auth.c
+include $(TOPDIR)/rules.mk
 
-main.o : main.c
-	$(CC) $(CFLAGS) -DNDEBUG -Wall -g -O2 -c main.c
+PKG_NAME:=c3h-client
+PKG_RELEASE:=1
+PKG_VERSION:=1.0.0
+PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
 
-md5.o : md5.c
-	$(CC) $(CFLAGS) -DNDEBUG -Wall -g -O2 -c md5.c
+include $(INCLUDE_DIR)/package.mk
 
-adapter.o : adapter.c
-	$(CC) $(CFLAGS) -DNDEBUG -Wall -g -O2 -c adapter.c
+define Package/c3h-client
+	SECTION:=net
+	CATEGORY:=Network
+	TITLE:=FOSU 802.1X client by KiritoA
+	DEPENDS:=+libpcap
+endef
 
-clean :
-	rm *.o c3h-client
+define Package/c3h-client/description
+	Support FOSU private authentication protocol.
+	Thanks to njit8021xclient make by liuqun.
+endef
+
+define Build/Prepare
+	echo "Here is Package/Prepare"
+	mkdir -p $(PKG_BUILD_DIR)
+	$(CP) ./src/* $(PKG_BUILD_DIR)/
+endef
+
+define Package/c3h-client/install
+	echo "Here is Package/install"
+	$(INSTALL_DIR) $(1)/bin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/c3h-client $(1)/bin/
+endef
+
+$(eval $(call BuildPackage,c3h-client))
